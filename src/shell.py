@@ -160,10 +160,11 @@ class BuiltIn:
 
     PIPE = -1
 
-    def __init__(self, shell, args, stdin=None, stdout=None, stderr=None, redirect=None):
+    def __init__(self, shell, args, stdin=None, stdout=None, stderr=None):
         self.shell = shell
         self.args = args
 
+        # setup pipelines
         if stdin == BuiltIn.PIPE:
             pipe_in, pipe_out = os.pipe()
             # FIXME: should not use TextIOWrapper, or program like `zcat` will fail
@@ -502,7 +503,7 @@ class Shell:
         process_list = []
         last_out = None
         for cmd in cmd_list[0:-1]:
-            p = self.create_subprocess(cmd.args, stdin=last_out, stdout=subprocess.PIPE)
+            p = self.create_subprocess(cmd.args, stdin=last_out, stdout=subprocess.PIPE, )
             process_list.append(p)
             last_out = p.stdout
         process_list.append(self.create_subprocess(cmd_list[-1].args, stdin=last_out))
@@ -531,21 +532,34 @@ class Shell:
     def is_builtin(self, cmd):
         return cmd in self.builtin.keys()
 
-    def create_subprocess(self, args, stdin=None, stdout=None, stderr=None):
+    def create_subprocess(self, args, stdin=None, stdout=None, stderr=None, redirect_in=None, redirect_out=None):
         cmd = args[0]
         if self.is_builtin(cmd):
             cmd_type = self.builtin.get(cmd)
-            return cmd_type(self, args, stdin=stdin, stdout=stdout, stderr=stderr)
+            process = cmd_type(self, args, stdin=stdin, stdout=stdout, stderr=stderr)
         else:
             full_path = self.find_cmd_in_paths(cmd)
             if not full_path:
                 raise Exception("[{}]: No such command or file".format(cmd))
             if full_path.endswith(".py"):
-                return subprocess.Popen(
+                process = subprocess.Popen(
                     [self.PYTHON_PATH, full_path] + args[1:], stdin=stdin, stdout=stdout, stderr=stderr)
             else:
-                return subprocess.Popen(
+                process = subprocess.Popen(
                     [full_path, ] + args[1:], stdin=stdin, stdout=stdout, stderr=stderr)
+
+        # setup redirection, close the pipes if necessary
+        # if redirect_in is not None:
+        #     # TODO: Is it OK to close it?
+        #     if self.stdin_read is not sys.stdin:
+        #         self.stdin_read.close()
+        #     self.stdin_read = io.TextIOWrapper(io.open(redirect_in, "rb", -1))
+        #
+        # if redirect_out is not None:
+        #     # TODO: Is it OK to close it?
+        #     if self.stdout_write is not sys.stdout:
+        #         self.stdout_write.close()
+        #     self.stdout_write = io.TextIOWrapper(io.open(redirect_out, "rb", -1))
 
     def expand(self, ast):
         """

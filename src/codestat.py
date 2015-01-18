@@ -195,7 +195,7 @@ def statistic_xml(f):
         for buf in iter(lambda: fp.read(1024), b''):
             handler.handle(buf)
         handler.end()
-        handler.end()
+        # handler.end()
     print("{}: {}".format(f, handler.dump()))
     return handler.get()
 

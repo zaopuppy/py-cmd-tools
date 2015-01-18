@@ -29,7 +29,7 @@ Now only some simple features were implemented:
  * ls (built-in)
  * cd (built-in)
  * grep
- * *codestat*
+ * codestat (new)
  * diff
 
 
@@ -38,8 +38,17 @@ Now only some simple features were implemented:
 
 ## Tasks
 
- [ ] which
+ * redirection
+ * detect file type by reading the first line like bash, not by guessing.
+ * if-stmt
+ * while-stmt
+ * test
+ * file
+ * shell expanding (like `*.log`, `applogcat[0-9]+.log`, etc)
+ * testing code
+ 
+
+
+
 
 TBD
-
-
