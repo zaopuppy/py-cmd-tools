@@ -370,6 +370,7 @@ class Shell:
         self.cmd_map = {}
         self.errno = 0
         self.parser = plyplus.Grammar(open("bash.g"))
+        # TODO: don't save commands in relative paths
         self.load_script_in_path(self.paths)
         self.builtin = {
             'echo': Echo,
@@ -533,8 +534,8 @@ class Shell:
 
 
 def main():
-    path = os.path.pathsep.join((os.getenv("PATH"), os.path.join(os.getcwd(), "module")))
-    sh = Shell(PATH=path.split(os.path.pathsep))
+    path = os.getenv("PATH").split(os.path.pathsep) + [os.path.abspath(os.path.dirname(sys.argv[0]))]
+    sh = Shell(PATH=path)
     if len(sys.argv) <= 1:
         print("-------------------------")
         print("Welcome to Python Pseudo-Shell")
