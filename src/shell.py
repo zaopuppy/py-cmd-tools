@@ -19,6 +19,7 @@ import os.path
 import subprocess
 import sys
 import threading
+import stat
 
 from functools import reduce
 
@@ -147,9 +148,6 @@ class Command:
 
 
 class ExecuteTree:
-    """
-    pass
-    """
     def __init__(self, ast):
         self.cmd_list = extract_cmd_list(ast)
         self.background = ast.tail[-1].head == "bg_flag"
@@ -157,7 +155,7 @@ class ExecuteTree:
 
 class BuiltIn:
     """
-    pass
+    Base class for all built-in commands. Setting up pipelines, supplying basic input/output functions for subclasses.
     """
 
     PIPE = -1
@@ -222,6 +220,13 @@ class BuiltIn:
         if flush:
             self.stdout_write.flush()
 
+    def error(self, msg, end='\n', flush=True):
+        if not isinstance(msg, str):
+            msg = str(msg)
+        self.stderr_write.write(msg + end)
+        if flush:
+            self.stderr_write.flush()
+
     def input(self, prompt=''):
         self.stdout_write.write(prompt)
         self.stdout_write.flush()
@@ -266,7 +271,53 @@ class Exit(BuiltIn):
         self.shell.is_running = False
 
 
+class Which(BuiltIn):
+    def execute(self):
+        pathlist = self.shell.paths
+
+        sts = 0
+
+        for prog in self.args[1:]:
+            ident = ()
+            for dir in pathlist:
+                filename = os.path.join(dir, prog)
+                # check `.py` file first
+                try:
+                    st = os.stat(filename + '.py')
+                    filename += '.py'
+                except OSError:
+                    try:
+                        st = os.stat(filename)
+                    except OSError:
+                        continue
+                if not stat.S_ISREG(st[stat.ST_MODE]):
+                    self.error(filename + ': not a disk file')
+                else:
+                    mode = stat.S_IMODE(st[stat.ST_MODE])
+                    if mode & 0o111:
+                        if not ident:
+                            print(filename)
+                            ident = st[:3]
+                        else:
+                            if st[:3] == ident:
+                                s = 'same as: '
+                            else:
+                                s = 'also: '
+                            self.error(s + filename)
+                    else:
+                        self.error(filename + ': not executable')
+            if not ident:
+                self.error(prog + ': not found')
+                sts = 1
+
+        return sts
+
+
 class Help(BuiltIn):
+    """
+    Print all command files in PATH. Optionally accept a regular expression
+    parameter, which can be used for filtering output.
+    """
     def execute(self):
         if len(self.args) > 1:
             match = self.args[1]
@@ -381,6 +432,7 @@ class Shell:
             'exit': Exit,
             'help': Help,
             'test': Test,
+            'which': Which,
         }
 
         setup_readline()
@@ -534,12 +586,10 @@ class Shell:
 
 
 def main():
-    path = os.getenv("PATH").split(os.path.pathsep) + [os.path.abspath(os.path.dirname(sys.argv[0]))]
+    path = [os.path.abspath(os.path.dirname(sys.argv[0]))] + os.getenv("PATH").split(os.path.pathsep)
     sh = Shell(PATH=path)
     if len(sys.argv) <= 1:
-        print("-------------------------")
-        print("Welcome to Python Pseudo-Shell")
-        print("-------------------------")
+        print("py-pseudo-shell")
         print()
         sh.run()
     else:

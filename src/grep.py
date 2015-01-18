@@ -29,22 +29,6 @@ def usage():
     """)
 
 
-def get_line(file_list, max_len=4096):
-    # print("get_line")
-    if len(file_list) <= 0:
-        # don't use input(), or we can't get input from pipe in win32 platform(works fine under Mac OS, though)
-        for line in iter(lambda: sys.stdin.readline(max_len), ''):
-            # print("input: " + line)
-            yield line
-    else:
-        for f in filter(lambda _: os.path.isfile(_), file_list):
-            with open(f, "rb") as fp:
-                # _io.BufferedReader
-                for line in iter(lambda: fp.readline(max_len), b''):
-                    # TODO: separate binary file and text file
-                    yield line.decode()
-
-
 def main():
     optlist, args = getopt.getopt(sys.argv[1:], "i", "ignore-case=")
 
@@ -59,13 +43,25 @@ def main():
 
     pattern = args[0]
     file_list = args[1:]
+    max_len = 4096
 
     prog = re.compile(pattern, flag)
 
-    for line in get_line(file_list):
-        if prog.search(line):
-            # win32 needs this `end=''`, but linux/mac doesn't
-            print(line, end='')
+    if len(file_list) <= 0:
+        # don't use input(), or we can't get input from pipe in win32 platform(works fine under Mac OS, though)
+        for line in iter(lambda: sys.stdin.readline(max_len), ''):
+            if prog.search(line):
+                print(line, end='')
+    else:
+        for f in filter(lambda _: os.path.isfile(_), file_list):
+            with open(f, "rb") as fp:
+                # _io.BufferedReader
+                for no, line in enumerate(iter(lambda: fp.readline(max_len), b'')):
+                    # TODO: separate binary file and text file
+                    line = line.decode()
+                    if prog.search(line):
+                        # win32 needs this `end=''`, but linux/mac doesn't
+                        print("{}:{}: {}".format(f, no, line), end='')
 
 
 if __name__ == "__main__":
