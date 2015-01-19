@@ -46,6 +46,7 @@ Now only some simple features were implemented:
  * file
  * shell expanding (like `*.log`, `applogcat[0-9]+.log`, etc)
  * testing code
+ * file caching, for better performance.
  
 
 

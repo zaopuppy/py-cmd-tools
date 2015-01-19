@@ -467,11 +467,11 @@ class Shell:
                 # create execute tree and execute it
                 self.execute(ExecuteTree(self.expand(ast)[0]))
 
-            except KeyboardInterrupt:
-                print("^C")
-                continue
             except plyplus.TokenizeError as tokenizeError:
                 print(tokenizeError)
+                continue
+            except KeyboardInterrupt:
+                print("^C")
                 continue
             except Exception as e:
                 print(e)
@@ -502,11 +502,23 @@ class Shell:
         """
         process_list = []
         last_out = None
-        for cmd in cmd_list[0:-1]:
-            p = self.create_subprocess(cmd.args, stdin=last_out, stdout=subprocess.PIPE, )
+        next_in = subprocess.PIPE
+        # if redirection exists, pipe fd won't be closed, that's a problem
+        for idx, cmd in enumerate(cmd_list):
+            if cmd.redirect_in is not None:
+                last_out = io.TextIOWrapper(io.open(cmd.redirect_in, "rb", -1))
+            if cmd.redirect_out is not None:
+                next_in = io.TextIOWrapper(io.open(cmd.redirect_out, "wb", -1))
+            elif idx >= len(cmd_list) - 1:
+                # the last command of pipeline
+                next_in = None
+            p = self.create_subprocess(cmd.args, stdin=last_out, stdout=next_in)
             process_list.append(p)
-            last_out = p.stdout
-        process_list.append(self.create_subprocess(cmd_list[-1].args, stdin=last_out))
+            if cmd.redirect_out is not None:
+                last_out = subprocess.DEVNULL
+            else:
+                last_out = p.stdout
+            next_in = subprocess.PIPE
 
         process_list[-1].communicate()
 
@@ -532,7 +544,7 @@ class Shell:
     def is_builtin(self, cmd):
         return cmd in self.builtin.keys()
 
-    def create_subprocess(self, args, stdin=None, stdout=None, stderr=None, redirect_in=None, redirect_out=None):
+    def create_subprocess(self, args, stdin=None, stdout=None, stderr=None):
         cmd = args[0]
         if self.is_builtin(cmd):
             cmd_type = self.builtin.get(cmd)
@@ -548,18 +560,7 @@ class Shell:
                 process = subprocess.Popen(
                     [full_path, ] + args[1:], stdin=stdin, stdout=stdout, stderr=stderr)
 
-        # setup redirection, close the pipes if necessary
-        # if redirect_in is not None:
-        #     # TODO: Is it OK to close it?
-        #     if self.stdin_read is not sys.stdin:
-        #         self.stdin_read.close()
-        #     self.stdin_read = io.TextIOWrapper(io.open(redirect_in, "rb", -1))
-        #
-        # if redirect_out is not None:
-        #     # TODO: Is it OK to close it?
-        #     if self.stdout_write is not sys.stdout:
-        #         self.stdout_write.close()
-        #     self.stdout_write = io.TextIOWrapper(io.open(redirect_out, "rb", -1))
+        return process
 
     def expand(self, ast):
         """
