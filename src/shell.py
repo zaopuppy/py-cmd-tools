@@ -234,37 +234,13 @@ class BuiltIn:
         return self.stdin_read.readline(2048)
 
 
-class Echo(BuiltIn):
-    def execute(self):
-        self.print(" ".join(self.args[1:]))
-
-
 class Cd(BuiltIn):
     def execute(self):
+        if len(self.args) <= 1:
+            # do nothing
+            return
         os.chdir(self.args[1])
-        self.shell.cwd = os.getcwd()
-
-
-class Ls(BuiltIn):
-    def execute(self):
-        args = self.args[1:]
-        if len(args) == 0:
-            args.append(self.shell.cwd)
-
-        for arg in args:
-            if not os.path.exists(arg):
-                self.print("No such file or directory")
-                continue
-            if os.path.isdir(arg):
-                for f in os.listdir(arg):
-                    self.print(f)
-            else:
-                self.print(arg)
-
-
-class Pwd(BuiltIn):
-    def execute(self):
-        self.print(self.shell.cwd)
+        # self.shell.cwd = os.getcwd()
 
 
 class Exit(BuiltIn):
@@ -411,7 +387,7 @@ class Shell:
 
         self.env = env
 
-        self.cwd = env.get("PWD")
+        # self.cwd = env.get("PWD")
         self.ps1 = env.get("PS1")
         self.ps2 = env.get("PS2")
         self.paths = env.get("PATH", [])
@@ -425,11 +401,7 @@ class Shell:
         # TODO: don't save commands in relative paths
         self.load_script_in_path(self.paths)
         self.builtin = {
-            'echo': Echo,
             'cd': Cd,
-            'ls': Ls,
-            'dir': Ls,
-            'pwd': Pwd,
             'exit': Exit,
             'help': Help,
             'test': Test,
@@ -450,7 +422,7 @@ class Shell:
         while self.is_running:
             try:
                 try:
-                    line = input(self.cwd + ' ' + self.ps1)
+                    line = input('[' + os.getcwd() + ']' + self.ps1)
                 except Exception:
                     print()
                     break
@@ -595,7 +567,7 @@ class Shell:
             self.errno = 0
         s = s.replace('$?', str(self.errno))
         if s == '*':
-            return os.listdir(self.cwd)
+            return os.listdir(os.getcwd())
         else:
             return [s]
 
@@ -614,4 +586,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

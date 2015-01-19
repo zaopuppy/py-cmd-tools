@@ -22,12 +22,14 @@ Now only some simple features were implemented:
  * bash builtin commands
 
 
-## implemented tools
+## Available tools
 
 
  * which (built-in)
- * ls (built-in)
  * cd (built-in)
+ * pwd
+ * echo
+ * ls
  * grep
  * codestat (new)
  * diff
@@ -44,6 +46,7 @@ Now only some simple features were implemented:
  * while-stmt
  * test
  * file
+ * test
  * shell expanding (like `*.log`, `applogcat[0-9]+.log`, etc)
  * testing code
  * file caching, for better performance.
