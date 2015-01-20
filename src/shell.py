@@ -377,27 +377,22 @@ class Shell:
         PYTHON_PATH = "/usr/local/bin/python3"
 
     # def __init__(self, cwd=None, ps1="$ ", ps2=".. ", path=[]):
-    def __init__(self, **env):
-        if "PWD" not in env:
-            env["PWD"] = os.getcwd()
-        if "PS1" not in env:
-            env["PS1"] = "$ "
-        if "PS2" not in env:
-            env["PS2"] = ".. "
-
-        self.env = env
-
+    def __init__(self, basedir, path=(), ps1='$ ', ps2=' > '):
         # self.cwd = env.get("PWD")
-        self.ps1 = env.get("PS1")
-        self.ps2 = env.get("PS2")
-        self.paths = env.get("PATH", [])
+        self.ps1 = ps1
+        self.ps2 = ps2
+        self.paths = path
+        if basedir is not None:
+            self.basedir = basedir
+        else:
+            self.basedir = os.getcwd()
 
         self.is_running = False
         # use RB-Tree instead of normal map, we need auto-complete
         # TODO: self.cmd_map = [] -> "path" -> [ "cmd.exe", "fde.dll" ]
         self.cmd_map = {}
         self.errno = 0
-        self.parser = plyplus.Grammar(open("bash.g"))
+        self.parser = plyplus.Grammar(open(os.path.join(self.basedir, "bash.g")))
         # TODO: don't save commands in relative paths
         self.load_script_in_path(self.paths)
         self.builtin = {
@@ -534,6 +529,7 @@ class Shell:
 
         return process
 
+    # TODO: not good, input param will be modified
     def expand(self, ast):
         """
         expand shell input string
@@ -573,8 +569,9 @@ class Shell:
 
 
 def main():
-    path = [os.path.abspath(os.path.dirname(sys.argv[0]))] + os.getenv("PATH").split(os.path.pathsep)
-    sh = Shell(PATH=path)
+    print(sys.argv)
+    path = os.getenv("PATH").split(os.path.pathsep)
+    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path)
     if len(sys.argv) <= 1:
         print("py-pseudo-shell")
         print()
