@@ -53,15 +53,21 @@ def main():
             if prog.search(line):
                 print(line, end='')
     else:
-        for f in filter(lambda _: os.path.isfile(_), file_list):
-            with open(f, "rb") as fp:
-                # _io.BufferedReader
-                for no, line in enumerate(iter(lambda: fp.readline(max_len), b'')):
-                    # TODO: separate binary file and text file
-                    line = line.decode()
-                    if prog.search(line):
-                        # win32 needs this `end=''`, but linux/mac doesn't
-                        print("{}:{}: {}".format(f, no, line), end='')
+        for f in file_list:
+            if not os.path.isfile(f):
+                print("{}: not a file".format(f))
+                continue
+            try:
+                with open(f, "rb") as fp:
+                    # _io.BufferedReader
+                    for no, line in enumerate(iter(lambda: fp.readline(max_len), b'')):
+                        # TODO: separate binary file and text file
+                        line = line.decode()
+                        if prog.search(line):
+                            # win32 needs this `end=''`, but linux/mac doesn't
+                            print("{}:{}: {}".format(f, no, line), end='')
+            except Exception as e:
+                print(e)
 
 
 if __name__ == "__main__":

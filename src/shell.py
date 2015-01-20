@@ -349,7 +349,7 @@ def file_name_completer(text, index):
     basename = os.path.basename(text)
     matches = []
     for f in os.listdir(dirname if dirname != '' else '.'):
-        if f.startswith(basename):
+        if f.lower().startswith(basename.lower()):
             p = os.path.join(dirname, f)
             if os.path.isdir(p):
                 matches.append(os.path.join(p, ''))
@@ -381,7 +381,7 @@ class Shell:
         # self.cwd = env.get("PWD")
         self.ps1 = ps1
         self.ps2 = ps2
-        self.paths = path
+        self.paths = [basedir,] + list(path)
         if basedir is not None:
             self.basedir = basedir
         else:
@@ -399,7 +399,7 @@ class Shell:
             'cd': Cd,
             'exit': Exit,
             'help': Help,
-            'test': Test,
+            '.test': Test,
             'which': Which,
         }
 
