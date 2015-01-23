@@ -250,14 +250,14 @@ class Exit(BuiltIn):
 
 class Which(BuiltIn):
     def execute(self):
-        pathlist = self.shell.paths
+        path_list = self.shell.paths
 
         sts = 0
 
-        for prog in self.args[1:]:
-            ident = ()
-            for dir in pathlist:
-                filename = os.path.join(dir, prog)
+        for f in self.args[1:]:
+            identity = ()
+            for d in path_list:
+                filename = os.path.join(d, f)
                 # check `.py` file first
                 try:
                     st = os.stat(filename + '.py')
@@ -272,19 +272,19 @@ class Which(BuiltIn):
                 else:
                     mode = stat.S_IMODE(st[stat.ST_MODE])
                     if mode & 0o111:
-                        if not ident:
+                        if not identity:
                             print(filename)
-                            ident = st[:3]
+                            identity = st[:3]
                         else:
-                            if st[:3] == ident:
+                            if st[:3] == identity:
                                 s = 'same as: '
                             else:
                                 s = 'also: '
                             self.error(s + filename)
                     else:
                         self.error(filename + ': not executable')
-            if not ident:
-                self.error(prog + ': not found')
+            if not identity:
+                self.error(f + ': not found')
                 sts = 1
 
         return sts
