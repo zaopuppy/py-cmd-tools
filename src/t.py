@@ -1,194 +1,234 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import readline
-import re
 
-import plyplus
-
-import subprocess
-import os
-import io
-
-import shell
+import ply.lex
+import ply.yacc
 
 
+# There's no multi-methods/multi-dispatching in Python, so it needs
+# a little effort to make it available
+#
+# [1] http://www.artima.com/weblogs/viewpost.jsp?thread=101605
+class PrintVisitor:
+    def __init__(self, exec_tree):
+        self.exec_tree = exec_tree
 
-def test_pipe1():
-    p1 = subprocess.Popen(
-        ["C:\\Windows\\system32\\cmd.exe",
-         "/c",
-         "dir"],
-        stdin=None, stdout=subprocess.PIPE, stderr=None)
-
-    p2 = subprocess.Popen(
-        ["/usr/local/bin/python3",
-         "/Volumes/Data/workspaces/base/python/unixtools/module/grep.py",
-         "l"],
-        stdin=p1.stdout, stdout=None, stderr=None)
-
-    p1.stdout.close()
-    p2.communicate()
+    def exec(self, context):
+        if isinstance()
 
 
-def test_pipe2():
-    p2cread, p2cwrite = os.pipe()
-    pipe_read = io.TextIOWrapper(io.open(p2cread, "rb"))
-    pipe_write = io.TextIOWrapper(io.open(p2cwrite, "wb"))
-    pipe_write.write("abc\nadsl\naaal")
-
-    p2 = subprocess.Popen(
-        ["/usr/local/bin/python3",
-         "/Volumes/Data/workspaces/base/python/unixtools/module/grep.py",
-         "l"],
-        stdin=pipe_read, stdout=None, stderr=None)
-
-    pipe_write.close()
-    p2.communicate()
-
-
-def test_pipe():
-    cmd = shell.Command(None, [], stdout=shell.Command.PIPE)
-
-    p = subprocess.Popen(
-        ["/usr/local/bin/python3",
-         "/Volumes/Data/workspaces/base/python/unixtools/module/grep.py",
-         "l"],
-        stdin=cmd.stdout, stdout=None, stderr=None)
-
-    p.communicate()
-
-
-def test_redirect():
-    p = subprocess.Popen(
-        ["/usr/local/bin/python3",
-         "/Volumes/Data/workspaces/base/python/unixtools/module/grep.py",
-         "l"],
-        stdin=cmd.stdout, stdout=None, stderr=None)
-
-    p.communicate()
-
-
-def transfer_dbl_quo_string(s):
-    result = ""
-    escaping = False
-    for idx, c in enumerate(s):
-        if not escaping:
-            if c == '\\':
-                escaping = True
-            else:
-                result += c
-        else:
-            escaping = False
-            if c == '\\':
-                result += '\\'
-            elif c == 'n':
-                result += '\n'
-            elif c == 'r':
-                result += '\r'
-            elif c == 't':
-                result += '\t'
-            elif c == '"':
-                result += '"'
-            elif c == "'":
-                result += "'"
-            else:
-                # bad escaping character, ignore escape character
-                result += '\\'
-                result += c
-    return result
-
-
-def transfer_quo_string(s):
-    return transfer_dbl_quo_string(s)
-
-
-def transfer_string(s):
-    if s.startswith('"'):
-        return transfer_dbl_quo_string(s[1:-1])
-    elif s.startswith("'"):
-        return transfer_quo_string(s[1:-1])
-    else:
-        return s
-
-
-def extract_cmd_args(cmd):
-    if cmd.head != "cmd":
-        return []
-    return [transfer_string(x.tail[0]) for x in cmd.tail]
-
-
-def extract_cmd_list(ast):
-    if ast.head != "start":
-        return []
-    return [extract_cmd_args(c) for c in ast.tail]
-
-
-def main():
-    parser = plyplus.Grammar(open("bash.g"))
-    # ast = parser.parse('C:\\Windows\\system32\\cmd.exe /c dir|D:\\Python34\python.exe D:\\source\\base\\python\\unixtools\\module\\grep.py . haha')
-    ast = parser.parse('/bin/ls "/"|/usr/bin/grep "l"')
-    print(ast)
-    cmd_list = extract_cmd_list(ast);
-    print(cmd_list)
-    if len(cmd_list) <= 0:
-        return
-    process_list = []
-    last_out = None
-    for cmd in cmd_list[0:-1]:
-        p = subprocess.Popen(cmd, stdin=last_out, stdout=subprocess.PIPE)
-        process_list.append(p)
-        last_out = p.stdout
-    process_list.append(subprocess.Popen(cmd_list[-1], stdin=last_out))
-    for p in process_list[0:-1]:
-        p.stdout.close()
-    process_list[-1].communicate()
-
-
-def substitute(s):
-    """
-    *
-    ?
-    :param s:
-    :return:
-    """
-    state_normal = 0
-    state_quo_string = 1
-    state_dbl_quo_string = 2
-    state = state_normal
-    for idx, c in enumerate(s):
-        if state == state_normal:
-            if c == "'":
-                state = state_quo_string
-            elif c == '"':
-                state = state_dbl_quo_string
-            else:
-                pass
-        elif state == state_quo_string:
-            pass
-        elif state == state_dbl_quo_string:
-            pass
-        else:
-            pass
-
-
-class Test:
+class BaseElement:
     def __init__(self):
-        self.value = 123
+        pass
 
-    def do(self):
-        print(self.value)
-
-
-def cls(data):
+    def exec(self, context):
+        print(type(self))
 
 
+class Background(BaseElement):
+    def __init__(self, command):
+        BaseElement.__init__(self)
+        self.command = command
+
+
+class And(BaseElement):
+    def __init__(self, left, right):
+        BaseElement.__init__(self)
+        self.left = left
+        self.right = right
+
+
+class Or(BaseElement):
+    def __init__(self, left, right):
+        BaseElement.__init__(self)
+        self.left = left
+        self.right = right
+
+
+class Pipe(BaseElement):
+    def __init__(self):
+        BaseElement.__init__(self)
+        self.command_list = []
+
+
+class Command(BaseElement):
+    def __init__(self):
+        BaseElement.__init__(self)
+        self.arg_list = []
+
+
+class RedirectionIn(BaseElement):
+    def __init__(self, file_name):
+        BaseElement.__init__(self)
+        self.file_name = file_name
+
+
+class RedirectionOut(BaseElement):
+    def __init__(self, file_name):
+        BaseElement.__init__(self)
+        self.file_name = file_name
+
+
+tokens = ('SPACES',
+          'STRING',
+          'COMMENT',
+          'OR',
+          'AND',
+          'OR_OR',
+          'AND_AND',
+          'LT',
+          'GT',
+          'SEMICOLON',
+          'NL',
+          )
+
+
+t_ignore_SPACES = r'[ \t\r]+'
+internal_string = r'.*?(?<!\\)(\\\\)*?'
+raw_string = r'[:\\/~\.\+\-\?\$\*\[\]_0-9a-zA-Z]+'
+t_STRING = r'("' + internal_string + r'"|\'' + internal_string + r'\'|' + raw_string + r')'
+t_ignore_COMMENT = r'\#[^\n]*'
+t_OR = r'\|'
+t_AND = r'&'
+t_OR_OR = r'\|\|'
+t_AND_AND = r'&&'
+t_LT = r'<'
+t_GT = r'>&?'
+t_SEMICOLON = r';'
+t_NL = r'\n'
+
+
+def t_error(t):
+    print("lex error: " + str(t))
+
+
+def p_start(p):
+    """
+    start : simple_list1
+          | simple_list1 AND
+    """
+    if len(p) == 2:
+        p[0] = p[1]
+    else:
+        p[0] = Background(p[1])
+
+
+def p_simple_list1_and(p):
+    """
+    simple_list1 : simple_list1 AND_AND newline_list simple_list1
+    """
+    p[0] = And(p[1], p[4])
+
+
+def p_simple_list1_or(p):
+    """
+    simple_list1 : simple_list1 OR_OR newline_list simple_list1
+    """
+    p[0] == Or(p[1], p[4])
+
+
+def p_simple_list1(p):
+    """
+    simple_list1 : pipeline_command
+    """
+    p[0] = p[1]
+
+
+def p_pipeline_command(p):
+    """
+    pipeline_command : pipeline
+    """
+    p[0] = p[1]
+
+
+def p_pipeline(p):
+    """
+    pipeline : pipeline OR newline_list pipeline
+             | command
+    """
+    if len(p) == 2:
+        p[0] = p[1]
+    else:
+        p[0] = Pipe()
+        if isinstance(p[1], Pipe):
+            p[0].command_list.extend(p[1].command_list)
+        else:
+            p[0].command_list.append(p[1])
+        if isinstance(p[4], Pipe):
+            p[0].command_list.extend(p[4].command_list)
+        else:
+            p[0].command_list.append(p[4])
+
+
+def p_command(p):
+    """
+    command : simple_command
+    """
+    p[0] = p[1]
+
+
+def p_simple_command(p):
+    """
+    simple_command : simple_command_element
+                   | simple_command simple_command_element
+    """
+    p[0] = Command()
+    if len(p) == 2:
+        p[0].arg_list.append(p[1])
+    else:
+        if isinstance(p[1], Command):
+            p[0].arg_list.extend(p[1].arg_list)
+        else:
+            p[0].arg_list.append(p[1])
+        if isinstance(p[2], Command):
+            p[0].arg_list.extend(p[2].arg_list)
+        else:
+            p[0].arg_list.append(p[2])
+
+
+def p_simple_command_element(p):
+    """
+    simple_command_element : STRING
+                           | redirection
+    """
+    p[0] = p[1]
+
+
+def p_redirection_out(p):
+    """
+    redirection : GT STRING
+    """
+    p[0] = RedirectionOut(p[2])
+
+
+def p_redirection_in(p):
+    """
+    redirection : LT STRING
+    """
+    p[0] = RedirectionIn(p[2])
+
+
+def p_newline_list(p):
+    """
+    newline_list :
+                 | newline_list NL
+    """
+    pass
+
+
+def p_error(p):
+    print("syntax error: " + str(p))
 
 if __name__ == "__main__":
-    t = Test()
-    t.do()
+    lexer = ply.lex.lex()
+    # while True:
+    #     lexer.input(input('> '))
+    #     for token in iter(lexer.token, None):
+    #         print(token)
+    parser = ply.yacc.yacc()
+    while True:
+        o = parser.parse(input('> '))
+        print(o)
 
 
-
-
-# end

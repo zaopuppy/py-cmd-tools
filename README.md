@@ -18,8 +18,8 @@ Now only some simple features were implemented:
 
  * autocomplete
  * pipeline
- * simple shell regular expression
- * bash builtin commands
+ * simple shell expanding
+ * basic bash builtin commands
 
 
 ## Available tools

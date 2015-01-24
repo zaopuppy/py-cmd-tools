@@ -381,7 +381,7 @@ class Shell:
         # self.cwd = env.get("PWD")
         self.ps1 = ps1
         self.ps2 = ps2
-        self.paths = [basedir,] + list(path)
+        self.paths = [basedir] + list(path)
         if basedir is not None:
             self.basedir = basedir
         else:
@@ -569,7 +569,6 @@ class Shell:
 
 
 def main():
-    print(sys.argv)
     path = os.getenv("PATH").split(os.path.pathsep)
     sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path)
     if len(sys.argv) <= 1:

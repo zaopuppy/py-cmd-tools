@@ -13,7 +13,7 @@ import os.path
 
 try:
     import readline
-except ImportError as e:
+except ImportError:
     readline = None
     print("warn: cant find readline")
 
