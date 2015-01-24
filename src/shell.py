@@ -21,11 +21,9 @@ import sys
 import threading
 import stat
 
+import internal.parser
+
 from functools import reduce
-
-import plyplus
-from plyplus.strees import STree
-
 
 try:
     import readline
@@ -91,68 +89,6 @@ def unescape_string(s):
         return s
 
 
-def extract_string(s):
-    if s.head != "string":
-        return None
-    return unescape_string(s.tail[0])
-
-
-def extract_redirect_in(redirect):
-    if redirect.head != "redirect_in":
-        return None
-    return extract_string(redirect.tail[0])
-
-
-def extract_redirect_out(redirect):
-    if redirect.head != "redirect_out":
-        return None
-    return extract_string(redirect.tail[0])
-
-
-def extract_cmd_args(cmd):
-    if cmd.head != "cmd":
-        return []
-
-    args = [extract_string(y) for y in filter(lambda x: x.head == "string", cmd.tail)]
-
-    redirect_in_list = tuple(filter(lambda x: x.head == "redirect_in", cmd.tail))
-    if len(redirect_in_list) == 0:
-        redirect_in = None
-    elif len(redirect_in_list) == 1:
-        redirect_in = extract_redirect_in(redirect_in_list[0])
-    else:
-        raise Exception("obscure redirection(in)")
-
-    redirect_out_list = tuple(filter(lambda x: x.head == "redirect_out", cmd.tail))
-    if len(redirect_out_list) == 0:
-        redirect_out = None
-    elif len(redirect_out_list) == 1:
-        redirect_out = extract_redirect_out(redirect_out_list[0])
-    else:
-        raise Exception("obscure redirection(out)")
-
-    return Command(args, redirect_in=redirect_in, redirect_out=redirect_out)
-
-
-def extract_cmd_list(ast):
-    if ast.head != "start":
-        return []
-    return list(map(extract_cmd_args, filter(lambda x: x.head == "cmd", ast.tail)))
-
-
-class Command:
-    def __init__(self, args, redirect_in=None, redirect_out=None):
-        self.args = args
-        self.redirect_in = redirect_in
-        self.redirect_out = redirect_out
-
-
-class ExecuteTree:
-    def __init__(self, ast):
-        self.cmd_list = extract_cmd_list(ast)
-        self.background = ast.tail[-1].head == "bg_flag"
-
-
 class BuiltIn:
     """
     Base class for all built-in commands. Setting up pipelines, supplying basic input/output functions for subclasses.
@@ -163,6 +99,7 @@ class BuiltIn:
     def __init__(self, shell, args, stdin=None, stdout=None, stderr=None):
         self.shell = shell
         self.args = args
+        self.returncode = 0
 
         # setup pipelines
         if stdin == BuiltIn.PIPE:
@@ -240,7 +177,6 @@ class Cd(BuiltIn):
             # do nothing
             return
         os.chdir(self.args[1])
-        # self.shell.cwd = os.getcwd()
 
 
 class Exit(BuiltIn):
@@ -392,7 +328,6 @@ class Shell:
         # TODO: self.cmd_map = [] -> "path" -> [ "cmd.exe", "fde.dll" ]
         self.cmd_map = {}
         self.errno = 0
-        self.parser = plyplus.Grammar(open(os.path.join(self.basedir, "bash.g")))
         # TODO: don't save commands in relative paths
         self.load_script_in_path(self.paths)
         self.builtin = {
@@ -429,14 +364,12 @@ class Shell:
                     continue
 
                 # parse input
-                ast = self.parser.parse(line)
+                ast = internal.parser.parse(line)
 
                 # create execute tree and execute it
-                self.execute(ExecuteTree(self.expand(ast)[0]))
+                # self.execute(ExecuteTree(self.expand(ast)[0]))
+                self.execute(ast)
 
-            except plyplus.TokenizeError as tokenizeError:
-                print(tokenizeError)
-                continue
             except KeyboardInterrupt:
                 print("^C")
                 continue
@@ -444,42 +377,62 @@ class Shell:
                 print(e)
                 continue
 
-    def execute(self, exe_tree):
-        if exe_tree.background:
-            # FIXME: not good, use sub-process instead of thread
-            thread = threading.Thread(target=self.execute_commands_in_thread, daemon=True, args=[exe_tree.cmd_list])
-            thread.start()
+    # FIXME: not good, use sub-process instead of thread
+    # There's no multi-methods/multi-dispatching in Python, so it needs
+    # a little effort to make it available
+    #
+    # Creator's solution
+    # http://www.artima.com/weblogs/viewpost.jsp?thread=101605
+    def execute(self, tree):
+        # I really need a good solution, but didn't find it yet.
+        if isinstance(tree, internal.parser.Background):
+            return self.execute_background(tree)
+        elif isinstance(tree, internal.parser.And):
+            return self.execute_and(tree)
+        elif isinstance(tree, internal.parser.Or):
+            return self.execute_or(tree)
+        elif isinstance(tree, internal.parser.Pipe):
+            return self.execute_pipe(tree)
+        # elif isinstance(tree, internal.parser.Command):
+        #     return self.execute_command(tree)
         else:
-            self.execute_commands(exe_tree.cmd_list)
+            raise Exception("Unknown element: " + str(tree))
 
-    def execute_commands_in_thread(self, *args):
-        """
-        wrapper for execution in thread
-        :param args: arguments for `execute_commands`
-        :return: None
-        """
-        self.execute_commands(*args)
-        print("[[done]]")
+    def execute_background(self, tree):
+        thread = threading.Thread(target=self.execute, daemon=True, args=[tree.command])
+        thread.start()
+        return 0
 
-    def execute_commands(self, cmd_list):
-        """
-        create sub-processes, pipe them together, then execute them in parallel
-        :param cmd_list: command list
-        :return: None
-        """
+    def execute_and(self, tree):
+        rv = self.execute(tree.left)
+        if rv != 0:
+            return rv
+        return self.execute(tree.right)
+
+    def execute_or(self, tree):
+        rv = self.execute(tree.left)
+        if rv == 0:
+            return rv
+        return self.execute(tree.right)
+
+    def execute_pipe(self, tree):
+        # for cmd in tree.command_list:
+        #     self.visit(context, cmd)
+        # return 0
         process_list = []
         last_out = None
         next_in = subprocess.PIPE
         # if redirection exists, pipe fd won't be closed, that's a problem
-        for idx, cmd in enumerate(cmd_list):
+        for idx, cmd in enumerate(tree.command_list):
             if cmd.redirect_in is not None:
-                last_out = io.TextIOWrapper(io.open(cmd.redirect_in, "rb", -1))
+                last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
             if cmd.redirect_out is not None:
-                next_in = io.TextIOWrapper(io.open(cmd.redirect_out, "wb", -1))
-            elif idx >= len(cmd_list) - 1:
+                next_in = io.TextIOWrapper(io.open(cmd.redirect_out.file_name, "wb", -1))
+            elif idx >= len(tree.command_list) - 1:
                 # the last command of pipeline
                 next_in = None
-            p = self.create_subprocess(cmd.args, stdin=last_out, stdout=next_in)
+            arg_list = self.normalize_arguments(cmd.arg_list)
+            p = self.create_subprocess(arg_list, stdin=last_out, stdout=next_in)
             process_list.append(p)
             if cmd.redirect_out is not None:
                 last_out = subprocess.DEVNULL
@@ -488,6 +441,7 @@ class Shell:
             next_in = subprocess.PIPE
 
         process_list[-1].communicate()
+        return process_list[-1].returncode
 
     def find_cmd_in_paths(self, cmd):
         if os.path.isabs(cmd):
@@ -529,34 +483,9 @@ class Shell:
 
         return process
 
-    # TODO: not good, input param will be modified
-    def expand(self, ast):
-        """
-        expand shell input string
-        :param ast:
-        :return:
-        """
-        if not isinstance(ast, STree):
-            return [ast]
-        if ast.head == "string":
-            if ast.tail[0][0] not in "\"'":
-                return list(map(
-                    lambda _: STree("string", [_]),
-                    self.expand_string(ast.tail[0])))
-            else:
-                return [ast]
-        else:
-            ast.tail = reduce(
-                lambda x, y: x + y,
-                map(self.expand, ast.tail)
-            )
-            return [ast]
-
     def expand_string(self, s):
         """
         a very simple and (also) very buggy implementation... :(
-        :param s:
-        :return:
         """
         # TODO: complete this method
         if not self.errno:
@@ -566,6 +495,14 @@ class Shell:
             return os.listdir(os.getcwd())
         else:
             return [s]
+
+    def normalize_arguments(self, arg_list):
+        return reduce(
+            lambda _, __: _ + __,
+            map(
+                lambda _: [unescape_string(_)] if _.startswith('"') or _.startswith("'") else self.expand_string(_),
+                arg_list)
+        )
 
 
 def main():
