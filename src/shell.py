@@ -338,6 +338,8 @@ class Shell:
             'which': Which,
         }
 
+        self.parser = internal.parser
+
         setup_readline()
 
     def load_script_in_path(self, paths):
@@ -353,8 +355,8 @@ class Shell:
             try:
                 try:
                     line = input('[' + os.getcwd() + ']' + self.ps1)
-                except Exception:
-                    print()
+                except Exception as e:
+                    print(e)
                     break
 
                 if not line:
@@ -364,7 +366,7 @@ class Shell:
                     continue
 
                 # parse input
-                ast = internal.parser.parse(line)
+                ast = self.parser.parse(input=line)
 
                 # create execute tree and execute it
                 # self.execute(ExecuteTree(self.expand(ast)[0]))
@@ -373,9 +375,9 @@ class Shell:
             except KeyboardInterrupt:
                 print("^C")
                 continue
-            except Exception as e:
-                print(e)
-                continue
+            # except Exception as e:
+            #     print(e)
+            #     continue
 
     # FIXME: not good, use sub-process instead of thread
     # There's no multi-methods/multi-dispatching in Python, so it needs

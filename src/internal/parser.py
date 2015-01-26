@@ -94,10 +94,24 @@ def t_error(t):
 # )
 
 
-def p_start(p):
+def p_input_unit(p):
     """
-    start : simple_list1
-          | simple_list1 AND
+    input_unit : simple_list
+    """
+    p[0] = p[1]
+
+# def p_simple_list_terminator(p):
+#     """
+#     simple_list_terminator :	'\n'
+#                            | yacc_EOF
+#     """
+#     pass
+
+
+def p_simple_list(p):
+    """
+    simple_list : simple_list1
+                | simple_list1 AND
     """
     if len(p) == 2:
         p[0] = p[1]
@@ -211,16 +225,23 @@ def p_newline_list(p):
     pass
 
 
+lexer = ply.lex.lex(debug=True)
+
+
 def p_error(p):
+    if not p:
+        # TODO: temporary solution
+        lexer.input(input('> '))
+        ply.yacc.errok()
+        return
     print("syntax error: " + str(p))
 
 
-lexer = ply.lex.lex(debug=True)
 parser = ply.yacc.yacc(debug=True)
 
 
-def parse(text):
-    return parser.parse(text)
+def parse(**kwargs):
+    return parser.parse(**kwargs)
 
 
 if __name__ == "__main__":
