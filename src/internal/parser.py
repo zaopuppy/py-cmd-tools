@@ -225,7 +225,7 @@ def p_newline_list(p):
     pass
 
 
-lexer = ply.lex.lex(debug=True)
+lexer = ply.lex.lex(debug=False)
 
 
 def p_error(p):
@@ -237,7 +237,7 @@ def p_error(p):
     print("syntax error: " + str(p))
 
 
-parser = ply.yacc.yacc(debug=True)
+parser = ply.yacc.yacc(debug=False)
 
 
 def parse(**kwargs):
