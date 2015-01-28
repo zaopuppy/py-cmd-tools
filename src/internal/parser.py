@@ -6,15 +6,26 @@ import ply.lex
 import ply.yacc
 
 
+FLAG_INVERT_RETURN  = 0x00000001
+FLAG_TIME_PIPE_LINE = 0x00000002
+
+
 class BaseElement:
     def __init__(self):
         pass
+
+    def accept(self, visitor):
+        raise NotImplementedError("BaseElement.visit")
 
 
 class Background(BaseElement):
     def __init__(self, command):
         BaseElement.__init__(self)
         self.command = command
+
+    def accept(self, visitor):
+        visitor(self)
+        visitor(self.command)
 
 
 class And(BaseElement):
@@ -23,6 +34,11 @@ class And(BaseElement):
         self.left = left
         self.right = right
 
+    def accept(self, visitor):
+        visitor(self)
+        visitor(self.left)
+        visitor(self.right)
+
 
 class Or(BaseElement):
     def __init__(self, left, right):
@@ -30,11 +46,31 @@ class Or(BaseElement):
         self.left = left
         self.right = right
 
+    def accept(self, visitor):
+        visitor(self)
+        visitor(self.left)
+        visitor(self.right)
+
 
 class Pipe(BaseElement):
     def __init__(self):
         BaseElement.__init__(self)
+        self.flags = 0
         self.command_list = []
+
+    def accept(self, visitor):
+        visitor(self)
+
+
+class SequenceCommandList(BaseElement):
+    def __init__(self):
+        BaseElement.__init__(self)
+        self.command_list = []
+
+    def accept(self, visitor):
+        visitor(self)
+        for cmd in self.command_list:
+            visitor(cmd)
 
 
 class Command(BaseElement):
@@ -44,17 +80,28 @@ class Command(BaseElement):
         self.redirect_in = None
         self.redirect_out = None
 
+    def accept(self, visitor):
+        visitor(self)
+        visitor(self.redirect_in)
+        visitor(self.redirect_out)
+
 
 class RedirectionIn(BaseElement):
     def __init__(self, file_name):
         BaseElement.__init__(self)
         self.file_name = file_name
 
+    def accept(self, visitor):
+        visitor(self)
+
 
 class RedirectionOut(BaseElement):
     def __init__(self, file_name):
         BaseElement.__init__(self)
         self.file_name = file_name
+
+    def accept(self, visitor):
+        visitor(self)
 
 
 tokens = (
@@ -69,6 +116,7 @@ tokens = (
     'GT',
     'SEMICOLON',
     'NL',
+    'BANG',
 )
 
 t_ignore_SPACES = r'[ \t\r]+'
@@ -84,6 +132,7 @@ t_LT = r'<'
 t_GT = r'>&?'
 t_SEMICOLON = r';'
 t_NL = r'\n'
+t_BANG = r'!'
 
 
 def t_error(t):
@@ -96,41 +145,76 @@ def t_error(t):
 
 def p_input_unit(p):
     """
-    input_unit : simple_list
+    input_unit : simple_list simple_list_terminator
+               | NL
     """
-    p[0] = p[1]
+    if len(p) == 3:
+        p[0] = p[1]
 
-# def p_simple_list_terminator(p):
-#     """
-#     simple_list_terminator :	'\n'
-#                            | yacc_EOF
-#     """
-#     pass
+
+def p_input_unit_error(p):
+    """
+    input_unit : error NL
+    """
+    print("Syntax error in input_unit_error, bad expression")
+
+
+def p_simple_list_terminator(p):
+    """
+    simple_list_terminator :
+                           | NL
+                           | SEMICOLON
+    """
+    pass
 
 
 def p_simple_list(p):
     """
     simple_list : simple_list1
-                | simple_list1 AND
+                | simple_list1 SEMICOLON
     """
-    if len(p) == 2:
-        p[0] = p[1]
-    else:
-        p[0] = Background(p[1])
+    p[0] = p[1]
 
 
-def p_simple_list1_and(p):
+def p_simple_list_and(p):
+    """
+    simple_list : simple_list1 AND
+    """
+    p[0] = Background(p[1])
+
+
+def p_simple_list1_and_and(p):
     """
     simple_list1 : simple_list1 AND_AND newline_list simple_list1
     """
     p[0] = And(p[1], p[4])
 
 
-def p_simple_list1_or(p):
+def p_simple_list1_or_or(p):
     """
     simple_list1 : simple_list1 OR_OR newline_list simple_list1
     """
     p[0] == Or(p[1], p[4])
+
+
+# TODO
+def p_simple_list1_and(p):
+    """
+    simple_list1 : simple_list1 AND simple_list1
+    """
+    raise NotImplementedError("`cmd & cmd` is not supported yet")
+
+
+def p_simple_list1_semi(p):
+    """
+    simple_list1 : simple_list1 SEMICOLON simple_list1
+    """
+    p[0] = SequenceCommandList()
+    for o in (p[1], p[3]):
+        if isinstance(o, SequenceCommandList):
+            p[0].command_list.expand(o.command_list)
+        else:
+            p[0].command_list.append(o)
 
 
 def p_simple_list1(p):
@@ -147,6 +231,14 @@ def p_pipeline_command(p):
     p[0] = p[1]
 
 
+def p_pipeline_command_bang(p):
+    """
+    pipeline_command : BANG pipeline_command
+    """
+    p[0] = p[2]
+    p[0].flags ^= FLAG_INVERT_RETURN
+
+
 def p_pipeline(p):
     """
     pipeline : pipeline OR newline_list pipeline
@@ -160,6 +252,7 @@ def p_pipeline(p):
         for o in (p[1], p[4]):
             if isinstance(o, Pipe):
                 p[0].command_list.extend(o.command_list)
+                p[0].flags |= o.flags
             elif isinstance(o, Command):
                 p[0].command_list.append(o)
             else:
@@ -242,6 +335,14 @@ parser = ply.yacc.yacc(debug=False)
 
 def parse(**kwargs):
     return parser.parse(**kwargs)
+
+
+def get_syntax_text():
+    """
+    return the complete syntax text
+    """
+    # TODO
+    return "Not implemented yet"
 
 
 if __name__ == "__main__":

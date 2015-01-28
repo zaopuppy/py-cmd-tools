@@ -362,15 +362,15 @@ class Shell:
                 if not line:
                     continue
 
-                if len(line.strip()) == 0:
+                line = line.strip()
+                if len(line) == 0:
                     continue
 
                 # parse input
-                ast = self.parser.parse(input=line)
+                ast = self.parser.parse(input=(line + '\n'))
 
-                # create execute tree and execute it
-                # self.execute(ExecuteTree(self.expand(ast)[0]))
-                self.execute(ast)
+                ast.accept(self.expand)
+                self.errno = self.execute(ast)
 
             except KeyboardInterrupt:
                 print("^C")
@@ -379,7 +379,6 @@ class Shell:
             #     print(e)
             #     continue
 
-    # FIXME: not good, use sub-process instead of thread
     # There's no multi-methods/multi-dispatching in Python, so it needs
     # a little effort to make it available
     #
@@ -395,11 +394,20 @@ class Shell:
             return self.execute_or(tree)
         elif isinstance(tree, internal.parser.Pipe):
             return self.execute_pipe(tree)
-        # elif isinstance(tree, internal.parser.Command):
-        #     return self.execute_command(tree)
+        elif isinstance(tree, internal.parser.SequenceCommandList):
+            return self.execute_sequence_command_list(tree)
+        elif isinstance(tree, internal.parser.Command):
+            return self.execute_command(tree)
         else:
             raise Exception("Unknown element: " + str(tree))
 
+    def execute_sequence_command_list(self, tree):
+        return tuple(map(self.execute, tree.command_list))[-1]
+
+    def execute_command(self, tree):
+        return self.execute_pipe_internal((tree,))
+
+    # FIXME: not good, use sub-process instead of thread
     def execute_background(self, tree):
         thread = threading.Thread(target=self.execute, daemon=True, args=[tree.command])
         thread.start()
@@ -418,19 +426,19 @@ class Shell:
         return self.execute(tree.right)
 
     def execute_pipe(self, tree):
-        # for cmd in tree.command_list:
-        #     self.visit(context, cmd)
-        # return 0
+        return self.execute_pipe_internal(tree.command_list, tree.flags)
+
+    def execute_pipe_internal(self, command_list, flags=0):
         process_list = []
         last_out = None
         next_in = subprocess.PIPE
         # if redirection exists, pipe fd won't be closed, that's a problem
-        for idx, cmd in enumerate(tree.command_list):
+        for idx, cmd in enumerate(command_list):
             if cmd.redirect_in is not None:
                 last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
             if cmd.redirect_out is not None:
                 next_in = io.TextIOWrapper(io.open(cmd.redirect_out.file_name, "wb", -1))
-            elif idx >= len(tree.command_list) - 1:
+            elif idx >= len(command_list) - 1:
                 # the last command of pipeline
                 next_in = None
             arg_list = self.normalize_arguments(cmd.arg_list)
@@ -443,7 +451,14 @@ class Shell:
             next_in = subprocess.PIPE
 
         process_list[-1].communicate()
-        return process_list[-1].returncode
+
+        if flags & internal.parser.FLAG_INVERT_RETURN:
+            if process_list[-1].returncode:
+                return 0
+            else:
+                return 1
+        else:
+            return process_list[-1].returncode
 
     def find_cmd_in_paths(self, cmd):
         if os.path.isabs(cmd):
@@ -485,11 +500,19 @@ class Shell:
 
         return process
 
+    def expand(self, ast):
+        if isinstance(ast, internal.parser.Command):
+            ast.arg_list = reduce(lambda _, __: _ + __,
+                                  map(lambda s: self.expand_string(s),
+                                      ast.arg_list),
+                                  [])
+
     def expand_string(self, s):
         """
         a very simple and (also) very buggy implementation... :(
         """
         # TODO: complete this method
+
         if not self.errno:
             self.errno = 0
         s = s.replace('$?', str(self.errno))
