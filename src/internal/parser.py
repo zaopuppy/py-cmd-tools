@@ -6,8 +6,9 @@ import ply.lex
 import ply.yacc
 
 
-FLAG_INVERT_RETURN  = 0x00000001
-FLAG_TIME_PIPE_LINE = 0x00000002
+FLAG_INVERT_RETURN = (1)
+FLAG_TIME_PIPE_LINE = (1 << 1)
+FLAG_TIME_POSIX = (1 << 2)
 
 
 class BaseElement:
@@ -117,8 +118,21 @@ tokens = (
     'SEMICOLON',
     'NL',
     'BANG',
+    'TIME',
+    'TIMEOPT',
+    'TIMEIGN',
 )
 
+
+def t_TIME(t):
+    """
+    time
+    """
+    return t
+
+
+t_TIMEOPT = r'-p'
+t_TIMEIGN = r'--'
 t_ignore_SPACES = r'[ \t\r]+'
 internal_string = r'.*?(?<!\\)(\\\\)*?'
 raw_string = r'[:\\/~\.\+\-\?\$\*\[\]_0-9a-zA-Z]+'
@@ -163,6 +177,14 @@ def p_simple_list_terminator(p):
     """
     simple_list_terminator :
                            | NL
+    """
+    pass
+
+
+def p_list_terminator(p):
+    """
+    list_terminator :
+                           | NL
                            | SEMICOLON
     """
     pass
@@ -194,7 +216,7 @@ def p_simple_list1_or_or(p):
     """
     simple_list1 : simple_list1 OR_OR newline_list simple_list1
     """
-    p[0] == Or(p[1], p[4])
+    p[0] = Or(p[1], p[4])
 
 
 # TODO
@@ -237,6 +259,44 @@ def p_pipeline_command_bang(p):
     """
     p[0] = p[2]
     p[0].flags ^= FLAG_INVERT_RETURN
+
+
+def p_pipeline_command_timespec(p):
+    """
+    pipeline_command : timespec pipeline_command
+    """
+    p[0] = p[2]
+    p[0].flags |= p[1]
+
+
+# TODO
+def p_pipeline_command_bang_terminator(p):
+    """
+    pipeline_command : BANG list_terminator
+    """
+    raise NotImplementedError("`!;` is not support")
+
+
+# TODO
+def p_pipeline_command_timespec_terminator(p):
+    """
+    pipeline_command : timespec list_terminator
+    """
+    raise NotImplementedError("`time;` is not support")
+
+
+def p_timespec(p):
+    """
+    timespec : TIME
+             | TIME TIMEOPT
+             | TIME TIMEOPT TIMEIGN
+    """
+    p[0] = 0
+    if len(p) == 2:
+        p[0] |= FLAG_TIME_PIPE_LINE
+    else:
+        p[0] |= FLAG_TIME_PIPE_LINE
+        p[0] |= FLAG_TIME_POSIX
 
 
 def p_pipeline(p):

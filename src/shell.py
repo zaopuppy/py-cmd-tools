@@ -313,7 +313,7 @@ class Shell:
         PYTHON_PATH = "/usr/local/bin/python3"
 
     # def __init__(self, cwd=None, ps1="$ ", ps2=".. ", path=[]):
-    def __init__(self, basedir, path=(), ps1='$ ', ps2=' > '):
+    def __init__(self, basedir, path=(), ps1='$ ', ps2=' > ', debug=False):
         # self.cwd = env.get("PWD")
         self.ps1 = ps1
         self.ps2 = ps2
@@ -323,6 +323,7 @@ class Shell:
         else:
             self.basedir = os.getcwd()
 
+        self.debug = debug
         self.is_running = False
         # use RB-Tree instead of normal map, we need auto-complete
         # TODO: self.cmd_map = [] -> "path" -> [ "cmd.exe", "fde.dll" ]
@@ -367,7 +368,7 @@ class Shell:
                     continue
 
                 # parse input
-                ast = self.parser.parse(input=(line + '\n'))
+                ast = self.parser.parse(input=(line + '\n'), debug=self.debug)
 
                 ast.accept(self.expand)
                 self.errno = self.execute(ast)
@@ -429,28 +430,37 @@ class Shell:
         return self.execute_pipe_internal(tree.command_list, tree.flags)
 
     def execute_pipe_internal(self, command_list, flags=0):
-        process_list = []
-        last_out = None
-        next_in = subprocess.PIPE
-        # if redirection exists, pipe fd won't be closed, that's a problem
-        for idx, cmd in enumerate(command_list):
-            if cmd.redirect_in is not None:
-                last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
-            if cmd.redirect_out is not None:
-                next_in = io.TextIOWrapper(io.open(cmd.redirect_out.file_name, "wb", -1))
-            elif idx >= len(command_list) - 1:
-                # the last command of pipeline
-                next_in = None
-            arg_list = self.normalize_arguments(cmd.arg_list)
-            p = self.create_subprocess(arg_list, stdin=last_out, stdout=next_in)
-            process_list.append(p)
-            if cmd.redirect_out is not None:
-                last_out = subprocess.DEVNULL
-            else:
-                last_out = p.stdout
+        try:
+            process_list = []
+            last_out = None
             next_in = subprocess.PIPE
+            # if redirection exists, pipe fd won't be closed, that's a problem
+            for idx, cmd in enumerate(command_list):
+                if cmd.redirect_in is not None:
+                    last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
+                if cmd.redirect_out is not None:
+                    next_in = io.TextIOWrapper(io.open(cmd.redirect_out.file_name, "wb", -1))
+                elif idx >= len(command_list) - 1:
+                    # the last command of pipeline
+                    next_in = None
+                arg_list = self.normalize_arguments(cmd.arg_list)
+                p = self.create_subprocess(arg_list, stdin=last_out, stdout=next_in)
+                process_list.append(p)
+                if cmd.redirect_out is not None:
+                    last_out = subprocess.DEVNULL
+                else:
+                    last_out = p.stdout
+                next_in = subprocess.PIPE
 
-        process_list[-1].communicate()
+            process_list[-1].communicate()
+        finally:
+            if flags & internal.parser.FLAG_TIME_PIPE_LINE:
+                # TODO
+                print()
+                print("real    0m0.062s")
+                print("user    0m0.000s")
+                print("sys     0m0.046s")
+                print("(Oh... `time` is not supported...:P)")
 
         if flags & internal.parser.FLAG_INVERT_RETURN:
             if process_list[-1].returncode:
@@ -532,7 +542,7 @@ class Shell:
 
 def main():
     path = os.getenv("PATH").split(os.path.pathsep)
-    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path)
+    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=True)
     if len(sys.argv) <= 1:
         print("py-pseudo-shell")
         print()
