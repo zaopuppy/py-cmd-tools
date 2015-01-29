@@ -4,6 +4,7 @@
 
 import ply.lex
 import ply.yacc
+from ply.lex import TOKEN
 
 
 FLAG_INVERT_RETURN = (1)
@@ -204,14 +205,20 @@ tokens = [
 #     return t
 
 
-
-t_TIMEOPT = r'-p'
-t_TIMEIGN = r'--'
-t_ignore_SPACES = r'[ \t\r]+'
 internal_string = r'.*?(?<!\\)(\\\\)*?'
 raw_string = r'[:\\/~\.\+\-\?\$\*\[\]_0-9a-zA-Z]+'
-t_STRING = r'("' + internal_string + r'"|\'' + internal_string + r'\'|' + raw_string + r')'
+any_string = r'("' + internal_string + r'"|\'' + internal_string + r'\'|' + raw_string + r')'
+
+
+# @TOKEN(any_string)
+# def t_STRING(t):
+#     t.type = reserved.get(t.value, 'STRING')
+#     return t
+
+
+t_ignore_SPACES = r'[ \t\r]+'
 t_ignore_COMMENT = r'\#[^\n]*'
+t_STRING = any_string
 t_OR = r'\|'
 t_AND = r'&'
 t_OR_OR = r'\|\|'
@@ -221,6 +228,8 @@ t_GT = r'>&?'
 t_SEMICOLON = r';'
 t_NL = r'\n'
 t_BANG = r'!'
+t_TIMEOPT = r'-p'
+t_TIMEIGN = r'--'
 
 
 def t_error(t):
@@ -499,23 +508,21 @@ def p_newline_list(p):
     pass
 
 
-lexer = ply.lex.lex(debug=False)
-
-
 def p_error(p):
     if not p:
         # TODO: temporary solution
-        lexer.input(input('> '))
+        p.lexer.input(input('> '))
         ply.yacc.errok()
         return
     print("syntax error: " + str(p))
 
 
-parser = ply.yacc.yacc(debug=False)
+def create_lexer(debug=False):
+    return ply.lex.lex(debug=debug)
 
 
-def parse(**kwargs):
-    return parser.parse(**kwargs)
+def create_parser(debug=False):
+    return ply.yacc.yacc(debug=debug)
 
 
 def get_syntax_text():

@@ -339,7 +339,8 @@ class Shell:
             'which': Which,
         }
 
-        self.parser = internal.parser
+        self.lexer = internal.parser.create_lexer(self.debug)
+        self.parser = internal.parser.create_parser(self.debug)
 
         setup_readline()
 
@@ -368,7 +369,11 @@ class Shell:
                     continue
 
                 # parse input
-                ast = self.parser.parse(input=(line + '\n'), debug=self.debug)
+                ast = self.parser.parse(
+                    input=(line + '\n'),
+                    debug=self.debug,
+                    lexer=self.lexer,
+                    tokenfunc=self.token_func)
 
                 ast.accept(self.expand)
                 self.errno = self.execute(ast)
@@ -379,6 +384,9 @@ class Shell:
             # except Exception as e:
             #     print(e)
             #     continue
+
+    def token_func(self):
+        return self.lexer.token()
 
     # There's no multi-methods/multi-dispatching in Python, so it needs
     # a little effort to make it available
