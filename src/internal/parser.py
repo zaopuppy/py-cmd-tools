@@ -105,7 +105,76 @@ class RedirectionOut(BaseElement):
         visitor(self)
 
 
-tokens = (
+# /* Reserved words.  These are only recognized as the first word of a
+#    command. */
+# STRING_INT_ALIST word_token_alist[] = {
+#   { "if", IF },
+#   { "then", THEN },
+#   { "else", ELSE },
+#   { "elif", ELIF },
+#   { "fi", FI },
+#   { "case", CASE },
+#   { "esac", ESAC },
+#   { "for", FOR },
+# #if defined (SELECT_COMMAND)
+#   { "select", SELECT },
+# #endif
+#   { "while", WHILE },
+#   { "until", UNTIL },
+#   { "do", DO },
+#   { "done", DONE },
+#   { "in", IN },
+#   { "function", FUNCTION },
+# #if defined (COMMAND_TIMING)
+#   { "time", TIME },
+# #endif
+#   { "{", '{' },
+#   { "}", '}' },
+#   { "!", BANG },
+# #if defined (COND_COMMAND)
+#   { "[[", COND_START },
+#   { "]]", COND_END },
+# #endif
+# #if defined (COPROCESS_SUPPORT)
+#   { "coproc", COPROC },
+# #endif
+#   { (char *)NULL, 0}
+# };
+
+# Handle special cases of token recognition:
+#         IN is recognized if the last token was WORD and the token
+#         before that was FOR or CASE or SELECT.
+#
+#         DO is recognized if the last token was WORD and the token
+#         before that was FOR or SELECT.
+#
+#         ESAC is recognized if the last token caused `esacs_needed_count'
+#         to be set
+#
+#         `{' is recognized if the last token as WORD and the token
+#         before that was FUNCTION, or if we just parsed an arithmetic
+#         `for' command.
+#
+#         `}' is recognized if there is an unclosed `{' present.
+#
+#         `-p' is returned as TIMEOPT if the last read token was TIME.
+#         `--' is returned as TIMEIGN if the last read token was TIMEOPT.
+#
+#         ']]' is returned as COND_END if the parser is currently parsing
+#         a conditional expression ((parser_state & PST_CONDEXPR) != 0)
+#
+#         `time' is returned as TIME if and only if it is immediately
+#         preceded by one of `;', `\n', `||', `&&', or `&'.
+#
+
+reserved = {
+    'time': 'TIME',
+    'if': 'IF',
+}
+
+tokens = [
+    'TIMEOPT',
+    'TIMEIGN',
     'SPACES',
     'STRING',
     'COMMENT',
@@ -118,17 +187,22 @@ tokens = (
     'SEMICOLON',
     'NL',
     'BANG',
-    'TIME',
-    'TIMEOPT',
-    'TIMEIGN',
-)
+] + list(reserved.values())
 
 
-def t_TIME(t):
-    """
-    time
-    """
-    return t
+# def t_IF(t):
+#     """
+#     if
+#     """
+#     return t
+
+
+# def t_TIME(t):
+#     """
+#     time
+#     """
+#     return t
+
 
 
 t_TIMEOPT = r'-p'
@@ -319,11 +393,58 @@ def p_pipeline(p):
                 raise Exception("bad command or pipeline")
 
 
+#            | shell_command
 def p_command(p):
     """
     command : simple_command
     """
     p[0] = p[1]
+
+
+# def p_command_shell_command_redirection_list(p):
+#     """
+#     command : shell_command redirection_list
+#     """
+#     pass
+
+
+# def p_command_function_define(p):
+#     """
+#     command : function_def
+#     """
+#     pass
+
+
+# def p_command_coproc(p):
+#     """
+#     command : coproc
+#     """
+#     pass
+
+
+# def p_shell_command_for(p):
+#     """
+#     shell_command : for_command
+#     """
+#     p[0] = p[1]
+
+
+# def p_for_command(p):
+#     """
+#     for_command : FOR WORD newline_list DO compound_list DONE
+#     """
+#     pass
+
+
+# | FOR WORD newline_list '{' compound_list '}'
+# | FOR WORD ';' newline_list DO compound_list DONE
+# | FOR WORD ';' newline_list '{' compound_list '}'
+# | FOR WORD newline_list IN word_list list_terminator newline_list DO compound_list DONE
+# | FOR WORD newline_list IN word_list list_terminator newline_list '{' compound_list '}'
+# | FOR WORD newline_list IN list_terminator newline_list DO compound_list DONE
+# | FOR WORD newline_list IN list_terminator newline_list '{' compound_list '}'
+
+
 
 
 def p_simple_command(p):
