@@ -339,8 +339,8 @@ class Shell:
             'which': Which,
         }
 
-        self.lexer = internal.parser.create_lexer(self.debug)
-        self.parser = internal.parser.create_parser(self.debug)
+        self.lexer = internal.parser.BashLexer(debug=self.debug)
+        self.parser = internal.parser.BashParser(context=self, lexer=self.lexer.lexer, debug=self.debug)
 
         setup_readline()
 
@@ -372,8 +372,8 @@ class Shell:
                 ast = self.parser.parse(
                     input=(line + '\n'),
                     debug=self.debug,
-                    lexer=self.lexer,
-                    tokenfunc=self.token_func)
+                    lexer=self.lexer.lexer,
+                    tokenfunc=self.lexer.token_func)
 
                 ast.accept(self.expand)
                 self.errno = self.execute(ast)
@@ -385,8 +385,8 @@ class Shell:
             #     print(e)
             #     continue
 
-    def token_func(self):
-        return self.lexer.token()
+    def prompt_input(self):
+        self.lexer.lexer.input(input(self.ps2))
 
     # There's no multi-methods/multi-dispatching in Python, so it needs
     # a little effort to make it available
@@ -550,7 +550,7 @@ class Shell:
 
 def main():
     path = os.getenv("PATH").split(os.path.pathsep)
-    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=True)
+    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=False)
     if len(sys.argv) <= 1:
         print("py-pseudo-shell")
         print()
