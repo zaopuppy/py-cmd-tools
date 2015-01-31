@@ -375,6 +375,10 @@ class Shell:
                     lexer=self.lexer.lexer,
                     tokenfunc=self.lexer.token_func)
 
+                if not ast:
+                    print("Bad syntax")
+                    continue
+
                 ast.accept(self.expand)
                 self.errno = self.execute(ast)
 
@@ -550,7 +554,7 @@ class Shell:
 
 def main():
     path = os.getenv("PATH").split(os.path.pathsep)
-    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=False)
+    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=True)
     if len(sys.argv) <= 1:
         print("py-pseudo-shell")
         print()

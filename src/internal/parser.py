@@ -4,7 +4,7 @@
 
 import ply.lex
 import ply.yacc
-
+from ply.lex import TOKEN
 
 FLAG_INVERT_RETURN = 1
 FLAG_TIME_PIPE_LINE = (1 << 1)
@@ -168,8 +168,29 @@ class RedirectionOut(BaseElement):
 #
 
 reserved = {
-    'time': 'TIME',
     'if': 'IF',
+    'then': 'THEN',
+    'elif': 'ELIF',
+    'fi': 'FI',
+    'case': 'CASE',
+    'esac': 'ESAC',
+    'for': 'FOR',
+    'select': 'SELECT',
+    'while': 'WHILE',
+    'until': 'UNTIL',
+    'do': 'DO',
+    'done': 'DONE',
+    'function': 'FUNCTION',
+    'coproc': 'COPROC',
+
+    '[[': 'COND_START',
+    ']]': 'COND_END',
+    # ??: 'COND_ERROR',
+
+    'in': 'IN',
+    'time': 'TIME',
+    '-p': 'TIMEOPT',
+    '--': 'TIMEIGN',
 }
 
 tokens = [
@@ -189,6 +210,10 @@ tokens = [
     'BANG',
     'LBRACE',
     'RBRACE',
+    'LPARENT',
+    'RPARENT',
+    'BAR_AND',
+    'SEMI_SEMI',
 ] + list(reserved.values())
 
 
@@ -201,14 +226,14 @@ class BashLexer:
     raw_string = r'[:\\/~\.\+\-\?\$\*\[\]_0-9a-zA-Z]+'
     any_string = r'("' + internal_string + r'"|\'' + internal_string + r'\'|' + raw_string + r')'
 
-    # @TOKEN(any_string)
-    # def t_STRING(t):
-    #     t.type = reserved.get(t.value, 'STRING')
-    #     return t
+    reserved_pre = ('NL', 'SEMICOLON', 'LPARENT', 'RPARENT',
+                    'OR', 'AND', 'LBRACE', 'RBRACE', 'AND_AND',
+                    'BANG', 'BAR_AND', 'DO', 'DONE', 'ELIF',
+                    'ELSE', 'ESAC', 'FI', 'IF', 'OR_OR', 'SEMI_SEMI',
+                    'TIME', 'TIMEOPT', 'TIMEIGN', 'UNTIL', 'WHILE')
 
     t_ignore_SPACES = r'[ \t\r]+'
     t_ignore_COMMENT = r'\#[^\n]*'
-    t_STRING = any_string
     t_OR = r'\|'
     t_AND = r'&'
     t_OR_OR = r'\|\|'
@@ -222,6 +247,16 @@ class BashLexer:
     t_TIMEIGN = r'--'
     t_LBRACE = r'\{'
     t_RBRACE = r'\}'
+    t_LPARENT = r'\('
+    t_RPARENT = r'\)'
+    t_BAR_AND = r'\|&'
+    t_SEMI_SEMI = r';;'
+
+    @TOKEN(any_string)
+    def t_STRING(self, t):
+        if not self.last_token or self.last_token.type in self.reserved_pre:
+            t.type = reserved.get(t.value, 'STRING')
+        return t
 
     def t_error(self, t):
         print("lex error: " + str(t))
@@ -388,12 +423,66 @@ class BashParser:
                 else:
                     raise Exception("bad command or pipeline")
 
-    #            | shell_command
     def p_command(self, p):
         """
         command : simple_command
+                | shell_command
         """
         p[0] = p[1]
+
+    def p_shell_command(self, p):
+        """
+        shell_command : for_command
+        """
+        p[0] = p[1]
+
+    # for_command : FOR WORD newline_list DO compound_list DONE
+    # | FOR WORD newline_list '{' compound_list '}'
+    # | FOR WORD ';' newline_list DO compound_list DONE
+    # | FOR WORD ';' newline_list '{' compound_list '}'
+    # |
+    # | FOR WORD newline_list IN word_list list_terminator newline_list '{' compound_list '}'
+    # | FOR WORD newline_list IN list_terminator newline_list DO compound_list DONE
+    # | FOR WORD newline_list IN list_terminator newline_list '{' compound_list '}'
+    def p_for_command(self, p):
+        """
+        for_command : FOR WORD newline_list IN word_list list_terminator newline_list DO compound_list DONE
+        """
+        # TODO
+        # p[0] = For()
+        print(str(p))
+
+    def p_list(self, p):
+        """
+        list : newline_list list0
+        """
+        p[0] = p[2]
+
+    def p_list0(self, p):
+        """
+        list0 : list1 '\n' newline_list
+              | list1 '&' newline_list
+              | list1 ';' newline_list
+        """
+        p[0] = p[1]
+
+    def p_list1(self, p):
+        """
+        list1 : list1 AND_AND newline_list list1
+              | list1 OR_OR newline_list list1
+              | list1 '&' newline_list list1
+              | list1 ';' newline_list list1
+              | list1 '\n' newline_list list1
+              | pipeline_command
+        """
+        pass
+
+    def p_compound_list(self, p):
+        """
+        compound_list : list
+                      | newline_list list1
+        """
+        pass
 
     # def p_command_shell_command_redirection_list(p):
     #     """
@@ -418,20 +507,6 @@ class BashParser:
     #     shell_command : for_command
     #     """
     #     p[0] = p[1]
-
-    # def p_for_command(p):
-    #     """
-    #     for_command : FOR WORD newline_list DO compound_list DONE
-    #     """
-    #     pass
-
-    # | FOR WORD newline_list '{' compound_list '}'
-    # | FOR WORD ';' newline_list DO compound_list DONE
-    # | FOR WORD ';' newline_list '{' compound_list '}'
-    # | FOR WORD newline_list IN word_list list_terminator newline_list DO compound_list DONE
-    # | FOR WORD newline_list IN word_list list_terminator newline_list '{' compound_list '}'
-    # | FOR WORD newline_list IN list_terminator newline_list DO compound_list DONE
-    # | FOR WORD newline_list IN list_terminator newline_list '{' compound_list '}'
 
     def p_simple_command(self, p):
         """
@@ -478,8 +553,17 @@ class BashParser:
         newline_list :
                      | newline_list NL
         """
-        # ignore
         pass
+
+    def p_word_list(self, p):
+        """
+        word_list : WORD
+                  | word_list WORD
+        """
+        if len(p) == 2:
+            p[0] = [p[1]]
+        else:
+            p[0] = p[1].append(p[2])
 
     def p_error(self, p):
         if not p:
