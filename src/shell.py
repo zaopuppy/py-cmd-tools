@@ -407,7 +407,7 @@ class Shell:
             return self.execute_or(tree)
         elif isinstance(tree, internal.parser.Pipe):
             return self.execute_pipe(tree)
-        elif isinstance(tree, internal.parser.SequenceCommandList):
+        elif isinstance(tree, internal.parser.SimpleCommandList):
             return self.execute_sequence_command_list(tree)
         elif isinstance(tree, internal.parser.Command):
             return self.execute_command(tree)

@@ -63,7 +63,7 @@ class Pipe(BaseElement):
         visitor(self)
 
 
-class SequenceCommandList(BaseElement):
+class SimpleCommandList(BaseElement):
     def __init__(self):
         BaseElement.__init__(self)
         self.command_list = []
@@ -344,9 +344,9 @@ class BashParser:
         """
         simple_list1 : simple_list1 SEMICOLON simple_list1
         """
-        p[0] = SequenceCommandList()
+        p[0] = SimpleCommandList()
         for o in (p[1], p[3]):
-            if isinstance(o, SequenceCommandList):
+            if isinstance(o, SimpleCommandList):
                 p[0].command_list.expand(o.command_list)
             else:
                 p[0].command_list.append(o)
@@ -461,21 +461,41 @@ class BashParser:
     def p_list0(self, p):
         """
         list0 : list1 '\n' newline_list
-              | list1 '&' newline_list
               | list1 ';' newline_list
         """
         p[0] = p[1]
 
+    def p_list0_and(self, p):
+        """
+        list0 : list1 '&' newline_list
+        """
+        p[0] = Background(p[1])
+
     def p_list1(self, p):
         """
-        list1 : list1 AND_AND newline_list list1
-              | list1 OR_OR newline_list list1
-              | list1 '&' newline_list list1
-              | list1 ';' newline_list list1
+        list1 : list1 ';' newline_list list1
               | list1 '\n' newline_list list1
               | pipeline_command
         """
         pass
+
+    def p_list1_and(self, p):
+        """
+        list1 : list1 '&' newline_list list1
+        """
+        pass
+
+    def p_list1_and_and(self, p):
+        """
+        list1 : list1 AND_AND newline_list list1
+        """
+        p[0] = And(p[1], p[4])
+
+    def p_list1_or_or(self, p):
+        """
+        list1 : list1 OR_OR newline_list list1
+        """
+        p[0] = Or(p[1], p[4])
 
     def p_compound_list(self, p):
         """
@@ -557,8 +577,8 @@ class BashParser:
 
     def p_word_list(self, p):
         """
-        word_list : WORD
-                  | word_list WORD
+        word_list : STRING
+                  | word_list STRING
         """
         if len(p) == 2:
             p[0] = [p[1]]
