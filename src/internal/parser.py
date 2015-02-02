@@ -21,7 +21,7 @@ class BaseElement:
 
 class Background(BaseElement):
     def __init__(self, command):
-        BaseElement.__init__(self)
+        super().__init__()
         self.command = command
 
     def accept(self, visitor):
@@ -31,7 +31,7 @@ class Background(BaseElement):
 
 class And(BaseElement):
     def __init__(self, left, right):
-        BaseElement.__init__(self)
+        super().__init__()
         self.left = left
         self.right = right
 
@@ -43,7 +43,7 @@ class And(BaseElement):
 
 class Or(BaseElement):
     def __init__(self, left, right):
-        BaseElement.__init__(self)
+        super().__init__()
         self.left = left
         self.right = right
 
@@ -55,7 +55,7 @@ class Or(BaseElement):
 
 class Pipe(BaseElement):
     def __init__(self):
-        BaseElement.__init__(self)
+        super().__init__()
         self.flags = 0
         self.command_list = []
 
@@ -65,7 +65,7 @@ class Pipe(BaseElement):
 
 class SimpleCommandList(BaseElement):
     def __init__(self):
-        BaseElement.__init__(self)
+        super().__init__()
         self.command_list = []
 
     def accept(self, visitor):
@@ -76,7 +76,7 @@ class SimpleCommandList(BaseElement):
 
 class Command(BaseElement):
     def __init__(self):
-        BaseElement.__init__(self)
+        super().__init__()
         self.arg_list = []
         self.redirect_in = None
         self.redirect_out = None
@@ -89,7 +89,7 @@ class Command(BaseElement):
 
 class RedirectionIn(BaseElement):
     def __init__(self, file_name):
-        BaseElement.__init__(self)
+        super().__init__()
         self.file_name = file_name
 
     def accept(self, visitor):
@@ -98,8 +98,31 @@ class RedirectionIn(BaseElement):
 
 class RedirectionOut(BaseElement):
     def __init__(self, file_name):
-        BaseElement.__init__(self)
+        super().__init__()
         self.file_name = file_name
+
+    def accept(self, visitor):
+        visitor(self)
+
+
+class For(BaseElement):
+    def __init__(self, var, value_list, command_list):
+        super().__init__()
+        self.var = var
+        self.value_list = value_list
+        self.command_list = command_list
+
+    def accept(self, visitor):
+        visitor(self)
+        visitor(self.value_list)
+        visitor(self.command_list)
+
+
+class Assign(BaseElement):
+    def __init__(self, var, value):
+        super().__init__()
+        self.var = var
+        self.value = value
 
     def accept(self, visitor):
         visitor(self)
@@ -254,8 +277,17 @@ class BashLexer:
 
     @TOKEN(any_string)
     def t_STRING(self, t):
+        # reserved tokens
         if not self.last_token or self.last_token.type in self.reserved_pre:
             t.type = reserved.get(t.value, 'STRING')
+
+        # special case tokens
+        if t.value == 'in' and self.token_before_that is not None and self.token_before_that.type in ('FOR', 'CASE', 'SELECT'):
+            t.type = 'IN'
+
+        if t.value == 'do' and self.token_before_that is not None and self.token_before_that.type in ('FOR', 'SELECT'):
+            t.type = 'DO'
+
         return t
 
     def t_error(self, t):
@@ -264,9 +296,10 @@ class BashLexer:
     def __init__(self, **kwargs):
         self.lexer = ply.lex.lex(module=self, **kwargs)
         self.last_token = None
+        self.token_before_that = None
 
     def token_func(self):
-        self.last_token = self.lexer.token()
+        self.last_token, self.token_before_that = self.lexer.token(), self.last_token
         return self.last_token
 
 
@@ -446,7 +479,7 @@ class BashParser:
     # | FOR WORD newline_list IN list_terminator newline_list '{' compound_list '}'
     def p_for_command(self, p):
         """
-        for_command : FOR WORD newline_list IN word_list list_terminator newline_list DO compound_list DONE
+        for_command : FOR STRING newline_list IN word_list list_terminator newline_list DO compound_list DONE
         """
         # TODO
         # p[0] = For()
@@ -460,30 +493,44 @@ class BashParser:
 
     def p_list0(self, p):
         """
-        list0 : list1 '\n' newline_list
-              | list1 ';' newline_list
+        list0 : list1 NL newline_list
+              | list1 SEMICOLON newline_list
         """
         p[0] = p[1]
 
     def p_list0_and(self, p):
         """
-        list0 : list1 '&' newline_list
+        list0 : list1 AND newline_list
         """
         p[0] = Background(p[1])
 
     def p_list1(self, p):
         """
-        list1 : list1 ';' newline_list list1
-              | list1 '\n' newline_list list1
+        list1 : list1 SEMICOLON newline_list list1
+              | list1 NL newline_list list1
               | pipeline_command
         """
-        pass
+        if len(p) == 2:
+            p[0] = p[1]
+        else:
+            # TODO: abstract this kind of procedure as `command_connect`
+            p[0] = SimpleCommandList()
+            for o in (p[1], p[4]):
+                if isinstance(o, SimpleCommandList):
+                    p[0].command_list.extend(o.command_list)
+                else:
+                    p[0].command_list.append(o)
 
     def p_list1_and(self, p):
         """
-        list1 : list1 '&' newline_list list1
+        list1 : list1 AND newline_list list1
         """
-        pass
+        p[0] = SimpleCommandList()
+        p[0].command_list.append(Background(p[1]))
+        if isinstance(p[4], SimpleCommandList):
+            p[0].command_list.extend(p[4])
+        else:
+            p[0].command_list.append(p[4])
 
     def p_list1_and_and(self, p):
         """
@@ -502,7 +549,10 @@ class BashParser:
         compound_list : list
                       | newline_list list1
         """
-        pass
+        if len(p) == 2:
+            p[0] = p[1]
+        else:
+            p[0] = p[2]
 
     # def p_command_shell_command_redirection_list(p):
     #     """
