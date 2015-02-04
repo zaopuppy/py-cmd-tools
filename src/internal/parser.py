@@ -77,6 +77,7 @@ class SimpleCommandList(BaseElement):
 class Command(BaseElement):
     def __init__(self):
         super().__init__()
+        self.env_list = []
         self.arg_list = []
         self.redirect_in = None
         self.redirect_out = None
@@ -106,16 +107,16 @@ class RedirectionOut(BaseElement):
 
 
 class For(BaseElement):
-    def __init__(self, var, value_list, command_list):
+    def __init__(self, var, value_list, command):
         super().__init__()
         self.var = var
         self.value_list = value_list
-        self.command_list = command_list
+        self.command = command
 
     def accept(self, visitor):
         visitor(self)
         visitor(self.value_list)
-        visitor(self.command_list)
+        visitor(self.command)
 
 
 class Assign(BaseElement):
@@ -217,6 +218,8 @@ reserved = {
 }
 
 tokens = [
+    'ASSIGNMENT_WORD',
+
     'TIMEOPT',
     'TIMEIGN',
     'SPACES',
@@ -246,8 +249,8 @@ class BashLexer:
     """
     tokens = tokens
     internal_string = r'.*?(?<!\\)(\\\\)*?'
-    raw_string = r'[:\\/~\.\+\-\?\$\*\[\]_0-9a-zA-Z]+'
-    any_string = r'("' + internal_string + r'"|\'' + internal_string + r'\'|' + raw_string + r')'
+    direct_string = r'[:\\/~\.\+\-\?\$\*\[\]=_0-9a-zA-Z]+'
+    any_string = r'("' + internal_string + r'"|\'' + internal_string + r'\'|' + direct_string + r')'
 
     reserved_pre = ('NL', 'SEMICOLON', 'LPARENT', 'RPARENT',
                     'OR', 'AND', 'LBRACE', 'RBRACE', 'AND_AND',
@@ -279,14 +282,20 @@ class BashLexer:
     def t_STRING(self, t):
         # reserved tokens
         if not self.last_token or self.last_token.type in self.reserved_pre:
-            t.type = reserved.get(t.value, 'STRING')
+            if t.value[0] not in "'\"" and '=' in t.value:
+                idx = t.value.find('=')
+                if idx != 0 and idx < len(t.value) - 1:
+                    t.type = 'ASSIGNMENT_WORD'
+            else:
+                t.type = reserved.get(t.value, 'STRING')
 
         # special case tokens
-        if t.value == 'in' and self.token_before_that is not None and self.token_before_that.type in ('FOR', 'CASE', 'SELECT'):
-            t.type = 'IN'
-
-        if t.value == 'do' and self.token_before_that is not None and self.token_before_that.type in ('FOR', 'SELECT'):
-            t.type = 'DO'
+        if self.token_before_that is not None and self.token_before_that.type in ('FOR', 'CASE', 'SELECT'):
+            if t.value == 'in':
+                t.type = 'IN'
+        elif self.token_before_that is not None and self.token_before_that.type in ('FOR', 'SELECT'):
+            if t.value == 'do':
+                t.type = 'DO'
 
         return t
 
@@ -481,9 +490,7 @@ class BashParser:
         """
         for_command : FOR STRING newline_list IN word_list list_terminator newline_list DO compound_list DONE
         """
-        # TODO
-        # p[0] = For()
-        print(str(p))
+        p[0] = For(p[2], p[5], p[9])
 
     def p_list(self, p):
         """
@@ -585,17 +592,25 @@ class BashParser:
         """
         p[0] = Command()
         if len(p) == 2:
-            p[0].arg_list.append(p[1])
+            if isinstance(p[1], Command) or isinstance(p[1], str):
+                p[0].arg_list.append(p[1])
+            elif isinstance(p[1], Assign):
+                p[0].env_list.append(p[1])
+            else:
+                raise Exception("Unknown command element type")
         else:
             for o in (p[1], p[2]):
                 if isinstance(o, Command):
                     p[0].arg_list.extend(o.arg_list)
+                    p[0].env_list.extend(o.env_list)
                 elif isinstance(o, RedirectionIn):
                     p[0].redirect_in = o
                 elif isinstance(o, RedirectionOut):
                     p[0].redirect_out = o
                 elif isinstance(o, str):
                     p[0].arg_list.append(o)
+                elif isinstance(o, Assign):
+                    p[0].env_list.append(o)
                 else:
                     raise Exception("bad command")
 
@@ -605,6 +620,14 @@ class BashParser:
                                | redirection
         """
         p[0] = p[1]
+
+    # TODO: support `v=abc ls`
+    def p_simple_command_element_assignment(self, p):
+        """
+        simple_command_element : ASSIGNMENT_WORD
+        """
+        idx = p[1].find('=')
+        p[0] = Assign(p[1][:idx], p[1][idx+1:])
 
     def p_redirection_out(self, p):
         """

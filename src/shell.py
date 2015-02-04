@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import stat
+import re
 
 import internal.parser
 
@@ -87,6 +88,29 @@ def unescape_string(s):
         return unescape_quo_string(s[1:-1])
     else:
         return s
+
+
+# TODO: Garbage Collection
+# TODO: Limitation of memory usage
+class Env:
+    """
+    Environment
+    """
+    def __init__(self, parent):
+        self.var_map = {}
+        self.parent = parent
+
+    def set(self, key, value):
+        self.var_map[key] = value
+
+    def get(self, key, default=None):
+        val = self.var_map.get(key, None)
+        if not val and self.parent is not None:
+            val = self.parent.get(key, None)
+        if not val:
+            print("WARN: {} is not defined".format(key))
+            val = default
+        return val
 
 
 class BuiltIn:
@@ -323,6 +347,7 @@ class Shell:
         else:
             self.basedir = os.getcwd()
 
+        self.env = Env(None)
         self.debug = debug
         self.is_running = False
         # use RB-Tree instead of normal map, we need auto-complete
@@ -392,96 +417,6 @@ class Shell:
     def prompt_input(self):
         self.lexer.lexer.input(input(self.ps2))
 
-    # There's no multi-methods/multi-dispatching in Python, so it needs
-    # a little effort to make it available
-    #
-    # Creator's solution
-    # http://www.artima.com/weblogs/viewpost.jsp?thread=101605
-    def execute(self, tree):
-        # I really need a good solution, but didn't find it yet.
-        if isinstance(tree, internal.parser.Background):
-            return self.execute_background(tree)
-        elif isinstance(tree, internal.parser.And):
-            return self.execute_and(tree)
-        elif isinstance(tree, internal.parser.Or):
-            return self.execute_or(tree)
-        elif isinstance(tree, internal.parser.Pipe):
-            return self.execute_pipe(tree)
-        elif isinstance(tree, internal.parser.SimpleCommandList):
-            return self.execute_sequence_command_list(tree)
-        elif isinstance(tree, internal.parser.Command):
-            return self.execute_command(tree)
-        else:
-            raise Exception("Unknown element: " + str(tree))
-
-    def execute_sequence_command_list(self, tree):
-        return tuple(map(self.execute, tree.command_list))[-1]
-
-    def execute_command(self, tree):
-        return self.execute_pipe_internal((tree,))
-
-    # FIXME: not good, use sub-process instead of thread
-    def execute_background(self, tree):
-        thread = threading.Thread(target=self.execute, daemon=True, args=[tree.command])
-        thread.start()
-        return 0
-
-    def execute_and(self, tree):
-        rv = self.execute(tree.left)
-        if rv != 0:
-            return rv
-        return self.execute(tree.right)
-
-    def execute_or(self, tree):
-        rv = self.execute(tree.left)
-        if rv == 0:
-            return rv
-        return self.execute(tree.right)
-
-    def execute_pipe(self, tree):
-        return self.execute_pipe_internal(tree.command_list, tree.flags)
-
-    def execute_pipe_internal(self, command_list, flags=0):
-        try:
-            process_list = []
-            last_out = None
-            next_in = subprocess.PIPE
-            # if redirection exists, pipe fd won't be closed, that's a problem
-            for idx, cmd in enumerate(command_list):
-                if cmd.redirect_in is not None:
-                    last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
-                if cmd.redirect_out is not None:
-                    next_in = io.TextIOWrapper(io.open(cmd.redirect_out.file_name, "wb", -1))
-                elif idx >= len(command_list) - 1:
-                    # the last command of pipeline
-                    next_in = None
-                arg_list = self.normalize_arguments(cmd.arg_list)
-                p = self.create_subprocess(arg_list, stdin=last_out, stdout=next_in)
-                process_list.append(p)
-                if cmd.redirect_out is not None:
-                    last_out = subprocess.DEVNULL
-                else:
-                    last_out = p.stdout
-                next_in = subprocess.PIPE
-
-            process_list[-1].communicate()
-        finally:
-            if flags & internal.parser.FLAG_TIME_PIPE_LINE:
-                # TODO
-                print()
-                print("real    0m0.062s")
-                print("user    0m0.000s")
-                print("sys     0m0.046s")
-                print("(Oh... `time` is not supported...:P)")
-
-        if flags & internal.parser.FLAG_INVERT_RETURN:
-            if process_list[-1].returncode:
-                return 0
-            else:
-                return 1
-        else:
-            return process_list[-1].returncode
-
     def find_cmd_in_paths(self, cmd):
         if os.path.isabs(cmd):
             try:
@@ -537,11 +472,36 @@ class Shell:
 
         if not self.errno:
             self.errno = 0
-        s = s.replace('$?', str(self.errno))
-        if s == '*':
-            return os.listdir(os.getcwd())
-        else:
+
+        result = [s]
+
+        if s[0] not in "'\"":
+            result = self.expand_variable(s)
+
+        return result
+        # result = map(lambda _: abc,)
+        # s = s.replace('$?', str(self.errno))
+        # if s == '*':
+        #     return os.listdir(os.getcwd())
+        # else:
+        #     return [s]
+
+    def expand_variable(self, s):
+        """
+        .*\$\{\}.*
+        """
+        def replace(m):
+            groups = m.groups()[1:]
+            key = groups[0] if groups[0] is not None else groups[1]
+            return self.env.get(key)
+        pattern = re.compile(r"\$(\{(.*?)\}|([\-0-9a-zA-Z]+))")
+        s = re.sub(pattern, replace, s)
+        if not s or len(s) == 0:
+            return ['']
+        elif s[0] in "'\"":
             return [s]
+        else:
+            return s.split()
 
     def normalize_arguments(self, arg_list):
         return reduce(
@@ -550,6 +510,119 @@ class Shell:
                 lambda _: [unescape_string(_)] if _.startswith('"') or _.startswith("'") else self.expand_string(_),
                 arg_list)
         )
+
+    # There's no multi-methods/multi-dispatching in Python, so it needs
+    # a little effort to make it available
+    #
+    # Creator's solution
+    # http://www.artima.com/weblogs/viewpost.jsp?thread=101605
+    def execute(self, ast):
+        # I really need a good solution, but didn't find it yet.
+        if isinstance(ast, internal.parser.Background):
+            return self.execute_background(ast)
+        elif isinstance(ast, internal.parser.And):
+            return self.execute_and(ast)
+        elif isinstance(ast, internal.parser.Or):
+            return self.execute_or(ast)
+        elif isinstance(ast, internal.parser.Pipe):
+            return self.execute_pipe(ast)
+        elif isinstance(ast, internal.parser.SimpleCommandList):
+            return self.execute_sequence_command_list(ast)
+        elif isinstance(ast, internal.parser.Command):
+            return self.execute_command(ast)
+        elif isinstance(ast, internal.parser.Assign):
+            return self.execute_assign(ast)
+        elif isinstance(ast, internal.parser.For):
+            return self.execute_for(ast)
+        else:
+            raise Exception("Unknown element: " + str(ast))
+
+    def execute_sequence_command_list(self, ast):
+        return tuple(map(self.execute, ast.command_list))[-1]
+
+    def execute_command(self, ast):
+        return self.execute_pipe_internal((ast,))
+
+    # FIXME: not good, use sub-process instead of thread
+    def execute_background(self, ast):
+        thread = threading.Thread(target=self.execute, daemon=True, args=[ast.command])
+        thread.start()
+        return 0
+
+    def execute_and(self, ast):
+        rv = self.execute(ast.left)
+        if rv != 0:
+            return rv
+        return self.execute(ast.right)
+
+    def execute_or(self, ast):
+        rv = self.execute(ast.left)
+        if rv == 0:
+            return rv
+        return self.execute(ast.right)
+
+    def execute_pipe(self, ast):
+        return self.execute_pipe_internal(ast.command_list, ast.flags)
+
+    def execute_pipe_internal(self, command_list, flags=0):
+        try:
+            process_list = []
+            last_out = None
+            next_in = subprocess.PIPE
+            # if redirection exists, pipe fd won't be closed, that's a problem
+            for idx, cmd in enumerate(command_list):
+                # TODO:
+                # --- FOR DEBUGGING ONLY!!! ---
+                for e in cmd.env_list:
+                    self.execute(e)
+
+                if len(cmd.arg_list) <= 0:
+                    return 0
+                # --- FOR DEBUGGING ONLY!!! ---
+                if cmd.redirect_in is not None:
+                    last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
+                if cmd.redirect_out is not None:
+                    next_in = io.TextIOWrapper(io.open(cmd.redirect_out.file_name, "wb", -1))
+                elif idx >= len(command_list) - 1:
+                    # the last command of pipeline
+                    next_in = None
+                arg_list = self.normalize_arguments(cmd.arg_list)
+                p = self.create_subprocess(arg_list, stdin=last_out, stdout=next_in)
+                process_list.append(p)
+                if cmd.redirect_out is not None:
+                    last_out = subprocess.DEVNULL
+                else:
+                    last_out = p.stdout
+                next_in = subprocess.PIPE
+
+            process_list[-1].communicate()
+        finally:
+            if flags & internal.parser.FLAG_TIME_PIPE_LINE:
+                # TODO
+                print()
+                print("real    0m0.062s")
+                print("user    0m0.000s")
+                print("sys     0m0.046s")
+                print("(Oh... `time` is not supported...:P)")
+
+        if flags & internal.parser.FLAG_INVERT_RETURN:
+            if process_list[-1].returncode:
+                return 0
+            else:
+                return 1
+        else:
+            return process_list[-1].returncode
+
+    def execute_assign(self, ast):
+        self.env.set(ast.var, ast.value)
+        return 0
+
+    def execute_for(self, ast):
+        rv = 0
+        for v in ast.value_list:
+            self.env.set(ast.var, v)
+            rv = self.execute(ast.command)
+        return rv
 
 
 def main():
