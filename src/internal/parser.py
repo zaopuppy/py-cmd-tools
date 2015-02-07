@@ -61,6 +61,8 @@ class Pipe(BaseElement):
 
     def accept(self, visitor):
         visitor(self)
+        for cmd in self.command_list:
+            visitor(cmd)
 
 
 class SimpleCommandList(BaseElement):
@@ -84,8 +86,6 @@ class Command(BaseElement):
 
     def accept(self, visitor):
         visitor(self)
-        visitor(self.redirect_in)
-        visitor(self.redirect_out)
 
 
 class RedirectionIn(BaseElement):
@@ -106,17 +106,19 @@ class RedirectionOut(BaseElement):
         visitor(self)
 
 
-class For(BaseElement):
-    def __init__(self, var, value_list, command):
-        super().__init__()
-        self.var = var
-        self.value_list = value_list
-        self.command = command
-
-    def accept(self, visitor):
-        visitor(self)
-        visitor(self.value_list)
-        visitor(self.command)
+# class For(BaseElement):
+#     def __init__(self, var, value_list, command):
+#         super().__init__()
+#         self.env_list = []
+#         self.var = var
+#         self.value_list = value_list
+#         self.command = command
+#
+#     def accept(self, visitor):
+#         visitor(self)
+#         # TODO: do we really need to let visitor visit our `value_list`?
+#         visitor(self.value_list)
+#         visitor(self.command)
 
 
 class Assign(BaseElement):
@@ -490,7 +492,12 @@ class BashParser:
         """
         for_command : FOR STRING newline_list IN word_list list_terminator newline_list DO compound_list DONE
         """
-        p[0] = For(p[2], p[5], p[9])
+        # p[0] = For(p[2], p[5], p[9])
+        p[0] = Command()
+        # p[0].env_list = []
+        p[0].arg_list = ['for', p[2], p[5], p[8]]
+        p[0].redirect_in = None
+        p[0].redirect_out = None
 
     def p_list(self, p):
         """
@@ -656,7 +663,8 @@ class BashParser:
         if len(p) == 2:
             p[0] = [p[1]]
         else:
-            p[0] = p[1].append(p[2])
+            p[0] = p[1]
+            p[0].append(p[2])
 
     def p_error(self, p):
         if not p:

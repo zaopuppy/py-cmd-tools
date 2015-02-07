@@ -470,6 +470,12 @@ class Shell:
         """
         # TODO: complete this method
 
+        if not s:
+            return []
+
+        if len(s) == 0:
+            return [""]
+
         if not self.errno:
             self.errno = 0
 
@@ -477,6 +483,12 @@ class Shell:
 
         if s[0] not in "'\"":
             result = self.expand_variable(s)
+
+        result = reduce(
+            lambda _, __: _ + __,
+            map(lambda _: os.listdir(os.getcwd()) if _ == "*" else [_], result),
+            []
+        )
 
         return result
         # result = map(lambda _: abc,)
@@ -572,13 +584,13 @@ class Shell:
             # if redirection exists, pipe fd won't be closed, that's a problem
             for idx, cmd in enumerate(command_list):
                 # TODO:
-                # --- FOR DEBUGGING ONLY!!! ---
-                for e in cmd.env_list:
-                    self.execute(e)
-
-                if len(cmd.arg_list) <= 0:
-                    return 0
-                # --- FOR DEBUGGING ONLY!!! ---
+                # # --- FOR DEBUGGING ONLY!!! ---
+                # for e in cmd.env_list:
+                #     self.execute(e)
+                #
+                # if len(cmd.arg_list) <= 0:
+                #     return 0
+                # # --- FOR DEBUGGING ONLY!!! ---
                 if cmd.redirect_in is not None:
                     last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
                 if cmd.redirect_out is not None:

@@ -17,7 +17,7 @@ def main():
 
     for arg in args:
         if not os.path.exists(arg):
-            print("No such file or directory")
+            print("No such file or directory: [{}]".format(arg))
             continue
         if os.path.isdir(arg):
             for f in os.listdir(arg):
