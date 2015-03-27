@@ -410,9 +410,9 @@ class Shell:
             except KeyboardInterrupt:
                 print("^C")
                 continue
-            # except Exception as e:
-            #     print(e)
-            #     continue
+            except Exception as e:
+                print(e)
+                continue
 
     def prompt_input(self):
         self.lexer.lexer.input(input(self.ps2))
@@ -491,12 +491,6 @@ class Shell:
         )
 
         return result
-        # result = map(lambda _: abc,)
-        # s = s.replace('$?', str(self.errno))
-        # if s == '*':
-        #     return os.listdir(os.getcwd())
-        # else:
-        #     return [s]
 
     def expand_variable(self, s):
         """
@@ -515,13 +509,21 @@ class Shell:
         else:
             return s.split()
 
-    def normalize_arguments(self, arg_list):
-        return reduce(
-            lambda _, __: _ + __,
-            map(
-                lambda _: [unescape_string(_)] if _.startswith('"') or _.startswith("'") else self.expand_string(_),
-                arg_list)
-        )
+    def normalize_arguments(self, cmd):
+        if cmd.arg_list[0] == 'for':
+            cmd.arg_list = reduce(
+                lambda _, __: _ + __,
+                map(
+                    lambda _: [unescape_string(_)] if _.startswith('"') or _.startswith("'") else self.expand_string(_),
+                    cmd.arg_list)
+            )
+        else:
+            cmd.arg_list = reduce(
+                lambda _, __: _ + __,
+                map(
+                    lambda _: [unescape_string(_)] if _.startswith('"') or _.startswith("'") else self.expand_string(_),
+                    cmd.arg_list)
+            )
 
     # There's no multi-methods/multi-dispatching in Python, so it needs
     # a little effort to make it available
@@ -591,6 +593,8 @@ class Shell:
                 # if len(cmd.arg_list) <= 0:
                 #     return 0
                 # # --- FOR DEBUGGING ONLY!!! ---
+                self.normalize_arguments(cmd)
+
                 if cmd.redirect_in is not None:
                     last_out = io.TextIOWrapper(io.open(cmd.redirect_in.file_name, "rb", -1))
                 if cmd.redirect_out is not None:
@@ -598,8 +602,8 @@ class Shell:
                 elif idx >= len(command_list) - 1:
                     # the last command of pipeline
                     next_in = None
-                arg_list = self.normalize_arguments(cmd.arg_list)
-                p = self.create_subprocess(arg_list, stdin=last_out, stdout=next_in)
+
+                p = self.create_subprocess(cmd.arg_list, stdin=last_out, stdout=next_in)
                 process_list.append(p)
                 if cmd.redirect_out is not None:
                     last_out = subprocess.DEVNULL
@@ -615,7 +619,7 @@ class Shell:
                 print("real    0m0.062s")
                 print("user    0m0.000s")
                 print("sys     0m0.046s")
-                print("(Oh... `time` is not supported...:P)")
+                print("(Oh... `time` is not implemented...:P)")
 
         if flags & internal.parser.FLAG_INVERT_RETURN:
             if process_list[-1].returncode:
@@ -639,7 +643,7 @@ class Shell:
 
 def main():
     path = os.getenv("PATH").split(os.path.pathsep)
-    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=True)
+    sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path, debug=False)
     if len(sys.argv) <= 1:
         print("py-pseudo-shell")
         print()
