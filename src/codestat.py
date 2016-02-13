@@ -268,7 +268,9 @@ def statistic(f):
                 stat_info[info.type] = 0
             stat_info[info.type] += info.line_no
     else:
-        stat_info["XX"] = statistic_file(f).line_no
+        info = statistic_file(f)
+        if info is not None:
+            stat_info[info.type] = info.line_no
 
     for item in stat_info.items():
         print("{}: {}".format(item[0], item[1]))
