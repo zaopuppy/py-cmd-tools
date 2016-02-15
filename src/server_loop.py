@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 
+import sys
 import time
 import asyncio
 import itertools
 import os
-import threading
+import functools
 
 
 # if (*amaster = open(ptbuf, O_RDWR | O_NOCTTY)) == -1) {
@@ -41,37 +42,94 @@ import threading
 # server_loop(pid,       ptyfd,        fdout(ptyfd),         -1);
 # server_loop(pid_t pid, int fdin_arg, int fdout_arg, int fderr_arg)
 
-
 def log(msg):
     print(msg)
 
 
+class PipeReader(asyncio.Protocol):
+    def __init__(self, writer):
+        self._writer = writer
+
+    def data_received(self, data):
+        # log(data.decode('utf-8'))
+        self._writer.write(data)
+
+    def eof_received(self):
+        log('eof pipe')
+        self._writer.write('eof'.encode('utf-8'))
+
+
+class PipeWriter(asyncio.BaseProtocol):
+    def connection_lost(self, exc):
+        log('connection lost')
+
+    def connection_made(self, transport):
+        log('connection made')
+
+    def pause_writing(self):
+        log('pause writing')
+
+    def resume_writing(self):
+        log('resume writing')
+
+
+def create_pipe_reader(writer):
+    return PipeReader(writer)
+
+
 async def handle_client(reader, writer):
-    stdin, stdout, stderr = notty_test()
-    while True:
-        raw_data = await reader.read(1024)
-        log(raw_data)
-        if not raw_data:
-            log('connection lose')
-            break
-        data = raw_data.decode('utf-8')
-        log('received: [{}]'.format(data))
-        os.write(stdin, data)
-
-
-def start_server():
-    asyncio.set_event_loop(asyncio.ProactorEventLoop())
+    log('new connection')
 
     loop = asyncio.get_event_loop()
 
-    server_coro = asyncio.start_server(handle_client, '0.0.0.0', 1983)
-    server = loop.run_until_complete(server_coro)
+    # do some authenticate work
 
-    log('started')
-    loop.run_forever()
+    in_r, in_w = os.pipe()
+    out_r, out_w = os.pipe()
+    err_r, err_w = os.pipe()
+
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, '-i',
+        stdin=os.fdopen(in_r, 'rb'),
+        stdout=os.fdopen(out_w, 'wb'),
+        stderr=os.fdopen(err_w, 'wb'))
+
+    in_transport, _ = await loop.connect_write_pipe(PipeWriter, os.fdopen(in_w, 'wb'))
+    await loop.connect_read_pipe(functools.partial(PipeReader, writer), os.fdopen(out_r, 'rb'))
+    await loop.connect_read_pipe(functools.partial(PipeReader, writer), os.fdopen(err_r, 'rb'))
+
+    asyncio.ensure_future(process.communicate(), loop=loop)
+
+    log('read client')
+    while True:
+        raw_data = await reader.read(1024)
+        # log(raw_data)
+        if not raw_data:
+            log('connection lose')
+            break
+        # data = raw_data.decode('utf-8')
+        # log(data)
+        in_transport.write(raw_data)
+
+
+def start_server():
+    if sys.platform in ('win32', 'cygwin'):
+        asyncio.set_event_loop(asyncio.ProactorEventLoop())
+
+    loop = asyncio.get_event_loop()
+
+    # start server
+    server_coro = asyncio.start_server(handle_client, '0.0.0.0', 1983, loop=loop)
+    server = loop.run_until_complete(asyncio.ensure_future(server_coro, loop=loop))
+
+    log('Serving on {}'.format(s.getsockname() for s in server.sockets))
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
 
     server.close()
-    loop.run_until_complete(server.wait_closed())
+    # loop.run_until_complete(server_future)
     loop.close()
 
 
@@ -93,24 +151,43 @@ def server_loop(stdin, stdout, stderr):
 
 
 def notty_test():
-    # (server-side, client-side)
+    loop = asyncio.get_event_loop()
+    future = asyncio.create_subprocess_shell('/bin/ls')
+    # returned a generator
+    future = asyncio.create_subprocess_shell('/bin/ls')
+    log(future.result())
+    process = loop.run_until_complete(future)
+    log(str(process.returncode))
+
+
+def test_pipe():
     in_r, in_w = os.pipe()
     out_r, out_w = os.pipe()
-    err_r, err_w = os.pipe()
 
-    process = asyncio.create_subprocess_exec(
-        'C:/Windows/SysWOW64/cmd.exe', stdin=in_r, stdout=out_w, stderr=err_w)
-    # child_thread = threading.Thread(target=do_child, args=(in_r, out_w, err_w))
-    # child_thread.start()
-    # server_thread = threading.Thread(target=server_loop, args=(in_w, out_r, err_r))
-    # server_thread.start()
+    loop = asyncio.get_event_loop()
+    process = loop.run_until_complete(
+        asyncio.create_subprocess_exec(
+            sys.executable, '-i',
+            stdin=os.fdopen(in_r, 'rb'), stderr=os.fdopen(out_w, 'wb'), loop=loop))
 
-    asyncio.get_event_loop().conn
-    return in_w, out_r, err_r
+    log('register pipe')
+    read_transport, _ = loop.run_until_complete(loop.connect_read_pipe(PipeReader, os.fdopen(out_r, 'rb')))
+    write_transport, _ = loop.run_until_complete(loop.connect_write_pipe(PipeReader, os.fdopen(in_w, 'wb')))
 
+    asyncio.ensure_future(process.communicate(), loop=loop)
+
+    time.sleep(3)
+
+    write_transport.abort()
+
+    process.terminate()
+
+    loop.run_forever()
 
 if __name__ == '__main__':
+    # notty_test()
     start_server()
     # tty_test()
+    # test_pipe()
 
 # END

@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import internal.parser as parser
-from shell import Shell
+import asyncio
+import time
+
+
+def log(msg):
+    print(msg)
+
+
+async def foo():
+    return 5
 
 
 if __name__ == "__main__":
-    # import os
-    # import sys
-    # path = os.getenv("PATH").split(os.path.pathsep)
-    # sh = Shell(basedir=os.path.abspath(os.path.dirname(sys.argv[0])), path=path)
-
-    # visitor = ExecuteVisitor()
-    while True:
-        line = input('> ')
-        if not line or len(line.strip()) == 0:
-            continue
-        print("input: [" + line + "]")
-        ret = parser.parse(line)
-        print(ret)
-        # print('ret: {}'.format(visitor.visit(sh, ret)))
-
+    loop = asyncio.get_event_loop()
+    coro = foo()
+    # v = loop.run_until_complete(coro)
+    f = asyncio.ensure_future(coro)
+    log(id(f))
+    # f.add_done_callback(lambda v: print(id(v)))
+    loop.run_forever()
+    # time.sleep(1)
+    # log(f.result())
 
 
