@@ -52,11 +52,17 @@ class PipeReader(asyncio.Protocol):
 
     def data_received(self, data):
         # log(data.decode('utf-8'))
-        self._writer.write(data)
+        if not self._writer:
+            log(data)
+        else:
+            self._writer.write(data)
 
     def eof_received(self):
         log('eof pipe')
-        self._writer.write('eof'.encode('utf-8'))
+        if not self._writer:
+            log('eof')
+        else:
+            self._writer.write('eof'.encode('utf-8'))
 
 
 class PipeWriter(asyncio.BaseProtocol):
@@ -172,22 +178,25 @@ def test_pipe():
 
     log('register pipe')
     read_transport, _ = loop.run_until_complete(loop.connect_read_pipe(PipeReader, os.fdopen(out_r, 'rb')))
-    write_transport, _ = loop.run_until_complete(loop.connect_write_pipe(PipeReader, os.fdopen(in_w, 'wb')))
+    write_transport, _ = loop.run_until_complete(loop.connect_write_pipe(PipeWriter, os.fdopen(in_w, 'wb')))
 
+    log('comm')
     asyncio.ensure_future(process.communicate(), loop=loop)
 
-    time.sleep(3)
+    # time.sleep(3)
+    #
+    # write_transport.abort()
+    #
+    # process.terminate()
 
-    write_transport.abort()
-
-    process.terminate()
+    log('wait')
 
     loop.run_forever()
 
 if __name__ == '__main__':
     # notty_test()
-    start_server()
+    # start_server()
     # tty_test()
-    # test_pipe()
+    test_pipe()
 
 # END

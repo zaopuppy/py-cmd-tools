@@ -11,10 +11,16 @@
 import sys, os, time, difflib, optparse
 from datetime import datetime, timezone
 
+
 def file_mtime(path):
     t = datetime.fromtimestamp(os.stat(path).st_mtime,
                                timezone.utc)
     return t.astimezone().isoformat()
+
+
+def stat_diff(from_lines, to_lines):
+    return None
+
 
 def main():
 
@@ -24,6 +30,7 @@ def main():
     parser.add_option("-u", action="store_true", default=False, help='Produce a unified format diff')
     parser.add_option("-m", action="store_true", default=False, help='Produce HTML side by side diff (can use -c and -l in conjunction)')
     parser.add_option("-n", action="store_true", default=False, help='Produce a ndiff format diff')
+    parser.add_option("-s", action="store_true", default=False, help='Statistic difference Produce a ndiff format diff')
     parser.add_option("-l", "--lines", type="int", default=3, help='Set number of context lines (default 3)')
     (options, args) = parser.parse_args()
 
@@ -49,10 +56,13 @@ def main():
         diff = difflib.ndiff(fromlines, tolines)
     elif options.m:
         diff = difflib.HtmlDiff().make_file(fromlines,tolines,fromfile,tofile,context=options.c,numlines=n)
+    elif options.s:
+        diff = stat_diff(fromlines, tolines)
     else:
         diff = difflib.context_diff(fromlines, tolines, fromfile, tofile, fromdate, todate, n=n)
 
     sys.stdout.writelines(diff)
+
 
 if __name__ == '__main__':
     main()
