@@ -100,6 +100,7 @@ async def handle_client(reader, writer):
         stdout=os.fdopen(out_w, 'wb'),
         stderr=os.fdopen(err_w, 'wb'))
 
+    log(loop)
     in_transport, _ = await loop.connect_write_pipe(PipeWriter, os.fdopen(in_w, 'wb'))
     await loop.connect_read_pipe(functools.partial(PipeReader, writer), os.fdopen(out_r, 'rb'))
     await loop.connect_read_pipe(functools.partial(PipeReader, writer), os.fdopen(err_r, 'rb'))
@@ -120,6 +121,7 @@ async def handle_client(reader, writer):
 
 def start_server():
     if sys.platform in ('win32', 'cygwin'):
+        log('windows')
         asyncio.set_event_loop(asyncio.ProactorEventLoop())
 
     loop = asyncio.get_event_loop()
@@ -195,8 +197,8 @@ def test_pipe():
 
 if __name__ == '__main__':
     # notty_test()
-    # start_server()
+    start_server()
     # tty_test()
-    test_pipe()
+    # test_pipe()
 
 # END
